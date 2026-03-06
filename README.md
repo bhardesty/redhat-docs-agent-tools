@@ -8,7 +8,7 @@ A collection of Claude Code plugins, skills, and agent tools for Red Hat documen
 
 ```bash
 # Add the marketplace
-/plugin marketplace add redhat-documentation/redhat-docs-agent-tools
+/plugin marketplace add https://github.com/redhat-documentation/redhat-docs-agent-tools.git
 
 # Install a plugin
 /plugin install hello-world@redhat-docs-agent-tools

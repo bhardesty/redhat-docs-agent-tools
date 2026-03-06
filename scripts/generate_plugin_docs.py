@@ -224,7 +224,7 @@ def generate_installation_page(plugins: list[dict]) -> str:
         "Add the plugin marketplace to your Claude Code configuration:",
         "",
         "```bash",
-        "/plugin marketplace add redhat-documentation/redhat-docs-agent-tools",
+        "/plugin marketplace add https://github.com/redhat-documentation/redhat-docs-agent-tools.git",
         "```",
         "",
         "Then install any plugin:",

@@ -24,7 +24,7 @@ A collection of Claude Code plugins, skills, and agent tools for Red Hat documen
 
     Get set up with the marketplace and install plugins
 
-    [:octicons-arrow-right-24: Install guide](installing/index.md)
+    [:octicons-arrow-right-24: Install](install/index.md)
 
 -   :material-account-plus:{ .lg .middle } **Contributing**
 
@@ -32,6 +32,6 @@ A collection of Claude Code plugins, skills, and agent tools for Red Hat documen
 
     Learn how to create and submit your own plugins
 
-    [:octicons-arrow-right-24: Contribute](contributing/index.md)
+    [:octicons-arrow-right-24: Contribute](contribute/index.md)
 
 </div>
