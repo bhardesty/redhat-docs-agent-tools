@@ -10,14 +10,14 @@ Run the multi-stage documentation workflow for a JIRA ticket. This command orche
 
 ## Agents
 
-| Stage | Agent | Subagent Type | Description |
-|-------|-------|---------------|-------------|
-| 1. Requirements | requirements-analyst | `docs-tools:requirements-analyst` | Parses JIRA issues, PRs, and specs to extract documentation requirements |
-| 2. Planning | docs-planner | `docs-tools:docs-planner` | Creates documentation plans with JTBD framework and gap analysis |
-| 3. Writing | docs-writer | `docs-tools:docs-writer` | Writes complete AsciiDoc modules following Red Hat modular docs standards |
-| 4. Technical review | technical-reviewer | `docs-tools:technical-reviewer` | Reviews for technical accuracy — code examples, prerequisites, commands, failure paths |
-| 5. Style review | docs-reviewer | `docs-tools:docs-reviewer` | Reviews with Vale linting and style guide checks, edits files in place |
-| 6. Create JIRA | *(direct bash/curl)* | — | Optional: creates a docs JIRA ticket linked to the parent ticket |
+| Stage | Agent | Description |
+|-------|-------|-------------|
+| 1. Requirements | requirements-analyst | Parses JIRA issues, PRs, and specs to extract documentation requirements |
+| 2. Planning | docs-planner | Creates documentation plans with JTBD framework and gap analysis |
+| 3. Writing | docs-writer | Writes complete AsciiDoc modules following Red Hat modular docs standards |
+| 4. Technical review | technical-reviewer | Reviews for technical accuracy — code examples, prerequisites, commands, failure paths |
+| 5. Style review | docs-reviewer | Reviews with Vale linting and style guide checks, edits files in place |
+| 6. Create JIRA | *(direct bash/curl)* | Optional: creates a docs JIRA ticket linked to the parent ticket |
 
 ## Output Structure
 
