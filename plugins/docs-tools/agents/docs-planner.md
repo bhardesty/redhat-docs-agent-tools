@@ -1,6 +1,6 @@
 ---
 name: docs-planner
-description: Documentation architect that analyzes codebases, existing docs, JIRA tickets, and requirements to recommend documentation structure and planning.
+description: Use PROACTIVELY when planning documentation structure, performing gap analysis, or creating documentation plans. Analyzes codebases, existing docs, JIRA tickets, and requirements to create comprehensive documentation plans with JTBD framework. MUST BE USED for any documentation planning or content architecture task.
 tools: Read, Glob, Grep, Edit, Bash
 skills: jira-reader, article-extractor, redhat-docs-toc
 ---

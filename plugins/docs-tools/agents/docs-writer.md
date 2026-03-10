@@ -1,6 +1,6 @@
 ---
 name: docs-writer
-description: Technical writer that creates AsciiDoc documentation (CONCEPT, PROCEDURE, REFERENCE, ASSEMBLY) following Red Hat modular documentation standards and style guides.
+description: Use PROACTIVELY when writing or drafting AsciiDoc documentation. Creates complete CONCEPT, PROCEDURE, REFERENCE, and ASSEMBLY modules following Red Hat modular documentation standards and style guides. MUST BE USED for any documentation writing, drafting, or content creation task.
 tools: Read, Glob, Grep, Edit, Bash
 skills: jira-reader, vale, docs-review-modular-docs, docs-review-content-quality
 ---

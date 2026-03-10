@@ -1,6 +1,6 @@
 ---
 name: docs-reviewer
-description: Documentation reviewer that uses Vale linting and style guide checks to review AsciiDoc and Markdown files and generate review reports.
+description: Use PROACTIVELY when reviewing documentation for style guide compliance. Uses Vale linting and 18 style guide review skills (IBM Style Guide + Red Hat SSG) to review AsciiDoc files, edit in place, and generate review reports. MUST BE USED for any style review or documentation quality check.
 tools: Read, Glob, Grep, Edit, Bash
 skills: vale, docs-review-modular-docs, docs-review-content-quality, ibm-sg-audience-and-medium, ibm-sg-language-and-grammar, ibm-sg-punctuation, ibm-sg-numbers-and-measurement, ibm-sg-structure-and-format, ibm-sg-references, ibm-sg-technical-elements, ibm-sg-legal-information, rh-ssg-grammar-and-language, rh-ssg-formatting, rh-ssg-structure, rh-ssg-technical-examples, rh-ssg-gui-and-links, rh-ssg-legal-and-support, rh-ssg-accessibility, rh-ssg-release-notes
 ---
