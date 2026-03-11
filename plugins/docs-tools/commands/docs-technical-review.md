@@ -95,7 +95,7 @@ Each `--docs` source is auto-detected and resolved:
 | Local file | Path exists as file | Use directly |
 | Local directory | Path exists as directory | Glob for `*.adoc` and `*.md` files |
 | Glob pattern | Contains `*` or `?` | Expand pattern to matching files |
-| PR/MR URL | Matches GitHub/GitLab PR URL pattern | Fetch changed doc files via `${CLAUDE_PLUGIN_ROOT}/commands/scripts/git_review_api.py` |
+| PR/MR URL | Matches GitHub/GitLab PR URL pattern | Fetch changed doc files via `./scripts/git_review_api.py` |
 | Google Doc URL | Matches `docs.google.com` | Read via `docs-convert-gdoc-md` skill, save to temp file |
 | Remote repo URL | Matches `https://github.com` or `https://gitlab.com` (non-PR) | Clone and glob for doc files |
 
@@ -117,22 +117,21 @@ For single-repo reviews, run sequentially.
 
 ### Step 5: Extract Technical References
 
-Run the `extract_tech_references.rb` script from `${CLAUDE_PLUGIN_ROOT}/commands/scripts/`:
+Run the `extract_tech_references.rb` script from `./scripts/`:
 
 ```bash
-ruby "${CLAUDE_PLUGIN_ROOT}/commands/scripts/extract_tech_references.rb" \
+ruby "./scripts/extract_tech_references.rb" \
   "${DOCS_FILES[@]}" \
   --output /tmp/tech-review-refs.json
 ```
 
-If the script path cannot be resolved, search for `extract_tech_references.rb` using Glob.
 
 ### Step 6: Search and Validate References Against Code
 
 Run the `search_tech_references.rb` script:
 
 ```bash
-ruby "${CLAUDE_PLUGIN_ROOT}/commands/scripts/search_tech_references.rb" \
+ruby "./scripts/search_tech_references.rb" \
   /tmp/tech-review-refs.json \
   /tmp/tech-review/repo1 /tmp/tech-review/repo2 \
   --output /tmp/tech-review-search.json
