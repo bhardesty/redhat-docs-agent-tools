@@ -802,15 +802,11 @@ Launch the docs-integrator agent with `Phase: PLAN` to analyze the repo and prod
 >
 > **Phase: PLAN**
 >
-> Analyze the repository structure and plan the integration of documentation drafts for ticket `<TICKET>`.
+> Plan the integration of documentation drafts for ticket `<TICKET>`.
 >
 > Drafts location: `<DRAFTS_DIR>/`
 >
-> Detect the build framework (Antora, ccutil, MkDocs, or plain AsciiDoc), analyze repo conventions, and map each draft file to its target location in the repository.
->
 > Save the integration plan to: `<INTEGRATION_PLAN_FILE>`
->
-> Do NOT move, rename, or modify any files during this phase.
 
 After the PLAN agent completes, verify that `_integration_plan.md` exists.
 
@@ -846,8 +842,6 @@ If the user confirms, launch the docs-integrator agent with `Phase: EXECUTE` to 
 >
 > Drafts location: `<DRAFTS_DIR>/`
 > Integration plan: `<INTEGRATION_PLAN_FILE>`
->
-> Apply all operations described in the integration plan. Validate that all references resolve correctly after integration.
 >
 > Save the integration report to: `<INTEGRATION_REPORT_FILE>`
 
