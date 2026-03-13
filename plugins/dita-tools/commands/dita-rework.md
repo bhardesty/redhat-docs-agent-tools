@@ -128,7 +128,7 @@ If Vale is not available, skip this step with a warning.
 
 Run each skill in sequence against all files. After each skill completes, create a git commit.
 
-**CRITICAL**: Use `--rewrite-deflists` for dita-callouts as specified.
+**CRITICAL**: Use `--rewrite-bullets` for dita-callouts (the default mode).
 
 #### 5a. dita-content-type
 
@@ -163,19 +163,19 @@ for modules.
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
-#### 5c. dita-callouts (rewrite for deflists)
+#### 5c. dita-callouts (rewrite for bullets)
 
 ```bash
 # For each file in the list
 while read -r file; do
-    ruby ${CLAUDE_PLUGIN_ROOT}/skills/dita-callouts/scripts/callouts.rb "$file" --rewrite-deflists
+    ruby ${CLAUDE_PLUGIN_ROOT}/skills/dita-callouts/scripts/callouts.rb "$file" --rewrite-bullets
 done < /tmp/dita-rework-files.txt
 
 # Commit changes
-git add -A && git commit -m "dita-callouts: Transform callouts to definition lists
+git add -A && git commit -m "dita-callouts: Transform callouts to bullet lists
 
-Applied dita-callouts skill with --rewrite-deflists to convert callout
-markers to definition lists for DITA compatibility.
+Applied dita-callouts skill with --rewrite-bullets to convert callout
+markers to bullet lists for DITA compatibility.
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
@@ -432,7 +432,7 @@ The following DITA cleanup skills were applied in sequence:
 
 1. **dita-content-type**: Added :_mod-docs-content-type: attributes (<count> files)
 2. **dita-document-id**: Added missing document IDs (<count> files)
-3. **dita-callouts**: Transformed callouts to definition lists (<count> files)
+3. **dita-callouts**: Transformed callouts to bullet lists (<count> files)
 4. **dita-entity-reference**: <status>
 5. **dita-line-break**: <status>
 6. **dita-related-links**: Cleaned up Additional resources sections (<count> files)
@@ -497,7 +497,7 @@ The following issues are informational only and excluded from the before/after c
 
 - [ ] Verify the AsciiDoc renders correctly
 - [ ] Run DITA conversion on the modified files
-- [ ] Review definition lists created from callouts
+- [ ] Review bullet lists created from callouts
 - [ ] Review block title conversions
 
 ---
