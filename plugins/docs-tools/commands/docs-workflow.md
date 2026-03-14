@@ -244,7 +244,7 @@ cat > "$STATE_FILE" << EOF
     "pr_urls": ${PR_URLS_JSON},
     "format": "${OUTPUT_FORMAT}",
     "integrate": ${INTEGRATE},
-    "create_jira_project": ${CREATE_JIRA_PROJECT:+\"$CREATE_JIRA_PROJECT\"}${CREATE_JIRA_PROJECT:-null}
+    "create_jira_project": $(if [[ -n "$CREATE_JIRA_PROJECT" ]]; then printf '"%s"' "$CREATE_JIRA_PROJECT"; else echo null; fi)
   },
   "data": {
     "jira_summary": null,
@@ -458,13 +458,14 @@ Replace `<STAGE>` and `<OUTPUT_FILE>` with actual values for each invocation.
 
 ## Stage Prompts
 
-The following sections define the exact prompt to pass to the Agent tool for each stage. Each prompt explicitly tells the agent which agent file to read and follow — this is how custom agents are invoked. All agents use the default `general-purpose` subagent type.
+The following sections define the exact prompt to pass to the Agent tool for each stage. Each stage specifies a dedicated `subagent_type` that loads the agent's instructions and enforces its declared tool restrictions automatically.
 
 **IMPORTANT — variable expansion**: All `<VARIABLE>` placeholders (e.g., `<TICKET>`, `<PREV_OUTPUT>`, `<DRAFTS_DIR>`, `<OUTPUT_FILE>`) must be expanded to their actual values **before** passing the prompt string to the Agent tool. Subagents start with a fresh context — they cannot access the orchestrator's shell variables. Build each prompt string with the resolved values substituted in.
 
 ### Stage 1: Requirements (requirements-analyst)
 
 **Agent tool parameters:**
+- `subagent_type`: `docs-tools:requirements-analyst`
 - `description`: `Analyze requirements for <TICKET>`
 
 **Output file path:**
@@ -476,8 +477,6 @@ OUTPUT_FILE="${CLAUDE_DOCS_DIR}/requirements/requirements_${SAFE_TICKET}_${NOW}.
 
 **Prompt:**
 
-> Use the requirements-analyst agent. Read and follow the agent instructions at `${CLAUDE_PLUGIN_ROOT}/agents/requirements-analyst.md`.
->
 > Analyze documentation requirements for JIRA ticket `<TICKET>`.
 >
 > Manually-provided PR/MR URLs to include in analysis (merge with any auto-discovered URLs, dedup):
@@ -505,6 +504,7 @@ ls -t "${CLAUDE_DOCS_DIR}/requirements/"*.md 2>/dev/null | head -1
 ### Stage 2: Planning (docs-planner)
 
 **Agent tool parameters:**
+- `subagent_type`: `docs-tools:docs-planner`
 - `description`: `Create documentation plan for <TICKET>`
 
 **Output file path:**
@@ -522,8 +522,6 @@ PREV_OUTPUT=$(jq -r '.stages.requirements.output_file // ""' "$STATE_FILE")
 
 **Prompt:**
 
-> Use the docs-planner agent. Read and follow the agent instructions at `${CLAUDE_PLUGIN_ROOT}/agents/docs-planner.md`.
->
 > Create a comprehensive documentation plan based on the requirements analysis.
 >
 > Read the requirements from: `<PREV_OUTPUT>`
@@ -551,6 +549,8 @@ Read the format from the state file:
 ```bash
 OUTPUT_FORMAT=$(jq -r '.options.format // "adoc"' "$STATE_FILE")
 ```
+
+- `subagent_type`: `docs-tools:docs-writer`
 
 - **If `OUTPUT_FORMAT` is `adoc`** (default):
   - `description`: `Write AsciiDoc documentation for <TICKET>`
@@ -582,8 +582,6 @@ PREV_OUTPUT=$(jq -r '.stages.planning.output_file // ""' "$STATE_FILE")
 
 **Prompt (AsciiDoc — default):**
 
-> Use the docs-writer agent. Read and follow the agent instructions at `${CLAUDE_PLUGIN_ROOT}/agents/docs-writer.md`.
->
 > Write complete AsciiDoc documentation based on the documentation plan for ticket `<TICKET>`.
 >
 > Read the plan from: `<PREV_OUTPUT>`
@@ -607,8 +605,6 @@ PREV_OUTPUT=$(jq -r '.stages.planning.output_file // ""' "$STATE_FILE")
 
 **Prompt (MkDocs — `--mkdocs`):**
 
-> Use the docs-writer agent. Read and follow the agent instructions at `${CLAUDE_PLUGIN_ROOT}/agents/docs-writer.md`.
->
 > Write complete Material for MkDocs Markdown documentation based on the documentation plan for ticket `<TICKET>`.
 >
 > Read the plan from: `<PREV_OUTPUT>`
@@ -637,6 +633,7 @@ After the agent completes, verify the index file exists at `<DRAFTS_DIR>/_index.
 The technical reviewer checks documentation for technical accuracy: code examples, prerequisites, commands, failure paths, and architectural coherence. The writer and technical reviewer iterate until the technical review passes.
 
 **Agent tool parameters:**
+- `subagent_type`: `docs-tools:technical-reviewer`
 - `description`: `Technical review of documentation for <TICKET>`
 
 **Output path:**
@@ -649,8 +646,6 @@ TECH_REVIEW_FILE="${DRAFTS_DIR}/_technical_review.md"
 
 **Prompt:**
 
-> Use the technical-reviewer agent. Read and follow the agent instructions at `${CLAUDE_PLUGIN_ROOT}/agents/technical-reviewer.md`.
->
 > Perform a technical review of the documentation drafts for ticket `<TICKET>`.
 >
 > Source drafts location: `<DRAFTS_DIR>/`
@@ -677,8 +672,8 @@ ITERATIONS=$(jq '.stages.technical_review.iterations' "$STATE_FILE")
 
 **Writer fix prompt (for iteration):**
 
-> Use the docs-writer agent. Read and follow the agent instructions at `${CLAUDE_PLUGIN_ROOT}/agents/docs-writer.md`.
->
+Launch the `docs-tools:docs-writer` agent with this prompt:
+
 > The technical reviewer found issues in the documentation for ticket `<TICKET>`.
 >
 > Read the technical review report at: `<TECH_REVIEW_FILE>`
@@ -696,6 +691,7 @@ ITERATIONS=$(jq '.stages.technical_review.iterations' "$STATE_FILE")
 ### Stage 5: Style Review (docs-reviewer)
 
 **Agent tool parameters:**
+- `subagent_type`: `docs-tools:docs-reviewer`
 - `description`: `Review documentation for <TICKET>`
 
 **Output path:**
@@ -715,8 +711,6 @@ OUTPUT_FORMAT=$(jq -r '.options.format // "adoc"' "$STATE_FILE")
 
 **If `OUTPUT_FORMAT` is `adoc` (default):**
 
-> Use the docs-reviewer agent. Read and follow the agent instructions at `${CLAUDE_PLUGIN_ROOT}/agents/docs-reviewer.md`.
->
 > Review the AsciiDoc documentation drafts for ticket `<TICKET>`.
 >
 > Source drafts location: `<DRAFTS_DIR>/`
@@ -745,8 +739,6 @@ OUTPUT_FORMAT=$(jq -r '.options.format // "adoc"' "$STATE_FILE")
 
 **If `OUTPUT_FORMAT` is `mkdocs`:**
 
-> Use the docs-reviewer agent. Read and follow the agent instructions at `${CLAUDE_PLUGIN_ROOT}/agents/docs-reviewer.md`.
->
 > Review the Material for MkDocs Markdown documentation drafts for ticket `<TICKET>`.
 >
 > Source drafts location: `<DRAFTS_DIR>/`
@@ -811,12 +803,11 @@ INTEGRATE_PHASE=$(jq -r '.stages.integrate.phase // "null"' "$STATE_FILE")
 2. Launch the docs-integrator agent with `Phase: PLAN`:
 
 **Agent tool parameters:**
+- `subagent_type`: `docs-tools:docs-integrator`
 - `description`: `Plan integration of documentation for <TICKET>`
 
 **Prompt:**
 
-> Use the docs-integrator agent. Read and follow the agent instructions at `${CLAUDE_PLUGIN_ROOT}/agents/docs-integrator.md`.
->
 > **Phase: PLAN**
 >
 > Plan the integration of documentation drafts for ticket `<TICKET>`.
@@ -871,12 +862,11 @@ Fall through to the `confirmed` branch below.
 1. Launch the docs-integrator agent with `Phase: EXECUTE`:
 
 **Agent tool parameters:**
+- `subagent_type`: `docs-tools:docs-integrator`
 - `description`: `Execute integration of documentation for <TICKET>`
 
 **Prompt:**
 
-> Use the docs-integrator agent. Read and follow the agent instructions at `${CLAUDE_PLUGIN_ROOT}/agents/docs-integrator.md`.
->
 > **Phase: EXECUTE**
 >
 > Execute the integration plan for ticket `<TICKET>`.
@@ -925,8 +915,8 @@ LINKS_JSON=$(curl -s \
 
 # Check for existing "Is documented by" link.
 # In Step 6d we create the link with:
-#   outwardIssue = TICKET          (the parent — source, shows "Is documented by")
-#   inwardIssue  = NEW_ISSUE_KEY   (the docs ticket — destination)
+#   outwardIssue = TICKET          (the parent — source, shows "documents")
+#   inwardIssue  = NEW_ISSUE_KEY   (the docs ticket — destination, shows "is documented by")
 # When querying TICKET's links, the docs ticket appears as inwardIssue.
 HAS_DOC_LINK=$(echo "$LINKS_JSON" | jq -r '
   .fields.issuelinks[]? |
@@ -940,7 +930,7 @@ if [[ -n "$HAS_DOC_LINK" ]]; then
       .fields.issuelinks[] |
       select(.type.name == "Document" and .inwardIssue != null) |
       .inwardIssue.key' | head -1)
-    echo "Parent ticket ${TICKET} already documents ${LINKED_KEY}."
+    echo "A documentation ticket (${LINKED_KEY}) already exists for ${TICKET}."
     echo "Skipping JIRA creation."
 fi
 ```

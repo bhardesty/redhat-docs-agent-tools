@@ -496,28 +496,3 @@ Skill: docs-tools:article-extractor, args: "https://docs.redhat.com/..."
 6. **Source documentation**: Include a complete "Sources consulted" section listing all JIRA tickets, PRs, code files, and external docs reviewed
 7. **Research expansion**: Use web search to find upstream documentation, industry standards, and best practices that inform requirements
 
-## Workflow continuation
-
-After completing the requirements analysis and saving the requirements document, you MUST instruct the parent agent to invoke the docs-writer agent to draft documentation for each new module identified.
-
-In your final response, include:
-
-```
-## Next steps - Invoke docs-writer
-
-The following modules need to be drafted. Invoke the docs-writer agent for each:
-
-1. **[module-name.adoc]** (TYPE)
-   - Requirement: REQ-XXX
-   - Summary: [Brief description of what to write]
-   - Save to: .claude/docs/drafts/[module-name].adoc
-
-2. **[module-name.adoc]** (TYPE)
-   - Requirement: REQ-XXX
-   - Summary: [Brief description of what to write]
-   - Save to: .claude/docs/drafts/[module-name].adoc
-
-Invoke docs-writer agents in parallel for efficiency.
-```
-
-This ensures the documentation workflow continues automatically after requirements analysis is complete.
