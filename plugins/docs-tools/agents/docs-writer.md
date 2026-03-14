@@ -254,6 +254,38 @@ Write prerequisites as completed conditions:
 - "Install JDK 11" (imperative - this is a step, not a prerequisite)
 - "You should have JDK 11" (should is unnecessary)
 
+### Content depth and structure balance
+
+Each module must contain enough substance to be useful on its own, without being padded or overloaded. Apply these principles:
+
+**Avoid thin modules:**
+- A concept module that is only 2-3 sentences is not a module — it is a short description. Expand it with context the reader needs: when to use this, how it relates to other components, key constraints, or architectural decisions.
+- A procedure with only 1-2 steps likely belongs as a substep in a larger procedure, not a standalone module.
+- A reference table with only 2-3 rows should be folded into the relevant concept or procedure unless it will grow over time.
+
+**Avoid list-heavy writing:**
+- Bullet lists and definition lists are scanning aids, not substitutes for explanation. A module that is mostly bullets with single-phrase items lacks the context readers need to act.
+- Use prose paragraphs to explain concepts, relationships, and reasoning. Use lists for genuinely parallel items (options, parameters, supported values).
+- If a section has more than two consecutive lists with no prose between them, restructure — introduce each list with a sentence that explains its purpose, or convert some lists to prose.
+
+**Avoid over-atomization:**
+- Not every heading needs its own module. Group closely related content into a single module rather than creating many modules with 1-2 paragraphs each.
+- A concept module should typically have 3-8 paragraphs of substance. If it has fewer than 3, consider whether it should be merged with a related module.
+- Sections within a module should have enough content to justify the heading. A section with a single sentence or a single bullet should be merged into its parent or sibling section.
+
+**Balance the table of contents:**
+- Assemblies should contain a balanced set of modules — avoid assemblies with one large module and several trivially small ones.
+- If an assembly has more than 8-10 modules, check whether some modules can be consolidated or whether the assembly should be split into two user stories.
+- If an assembly has only 1-2 modules, check whether it should be folded into a parent assembly or expanded with additional modules.
+
+**Right-size narrative depth by module type:**
+
+| Type | Too thin | Right depth | Too heavy |
+|------|----------|-------------|-----------|
+| CONCEPT | 2-3 sentences, no context | 3-8 paragraphs covering what, why, when, constraints | Multi-page narrative with implementation details that belong in a procedure |
+| PROCEDURE | 1-2 steps with no verification | 3-10 steps with prerequisites, verification, and troubleshooting hints | 20+ steps that should be split into sub-procedures |
+| REFERENCE | 2-3 rows, no descriptions | Complete parameter table with types, defaults, and usage notes | Embedded tutorials or conceptual explanations in table cells |
+
 ### Procedure steps
 
 - Use imperative mood: "Install the package" not "You should install"
