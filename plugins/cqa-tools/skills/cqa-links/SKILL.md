@@ -122,12 +122,37 @@ Content should be interlinked so that users can navigate between related topics.
    - All `link:` macros must have descriptive link text (not empty `[]`)
    - No legacy Antora module prefixes (`administration-guide:`, `user-guide:`)
 4. **Target ID verification**: Cross-guide link target IDs must match actual `[id="..."]` declared in the target guide's files. Legacy anchor names from the pre-modularization era may not resolve in the current format.
-5. **Missing cross-guide opportunities**: Check if topics in one guide clearly relate to topics in the other guide but lack cross-references (e.g., admin OAuth setup ↔ user credential usage, admin storage config ↔ user storage concepts)
+5. **Anchor context resolution** (**critical**): Cross-guide `link:` macros must NOT use `_{context}` in the anchor fragment. The `{context}` attribute resolves to the **source** guide's context value, not the target guide's. For example, `link:{prod-ag-url}some-id_{context}[...]` in a user guide file resolves `{context}` to `user_guide`, producing the anchor `some-id_user_guide` — but the actual anchor in the admin guide HTML is `some-id_administration_guide`. The anchor must hardcode the target guide's context string directly.
+6. **Missing cross-guide opportunities**: Check if topics in one guide clearly relate to topics in the other guide but lack cross-references (e.g., admin OAuth setup ↔ user credential usage, admin storage config ↔ user storage concepts)
+
+#### Anchor context verification procedure
+
+Cross-guide anchors are **not validated** by `validate-refs.py` (which only checks within-guide `xref:` targets). These must be checked manually:
+
+1. **Find `{context}` in cross-guide anchors** — these are always wrong:
+   ```bash
+   # Links to admin guide with {context} in anchor (in user guide files)
+   grep -rn 'link:{prod-ag-url}.*_{context}' topics/user_guide/ assemblies/user_guide/ --include='*.adoc'
+
+   # Links to user guide with {context} in anchor (in admin guide files)
+   grep -rn 'link:{prod-ug-url}.*_{context}' topics/administration_guide/ assemblies/administration_guide/ --include='*.adoc'
+   ```
+   Any matches are broken. Replace `_{context}` with the target guide's hardcoded context string (`_administration_guide` or `_user_guide`).
+
+2. **Verify all cross-guide anchors match declared IDs** — for each `link:{prod-ag-url}ANCHOR[...]` or `link:{prod-ug-url}ANCHOR[...]`:
+   - Extract the anchor fragment (everything between the URL attribute and `[`)
+   - Search for a matching `[id="ANCHOR"]` in the target guide's files (with `_{context}` appended to the declared ID pattern)
+   - The anchor in the link must equal the ID base + `_` + target guide's context value
+
+3. **Context values** — determined by the `:context:` attribute set in each guide's `master.adoc`:
+   - Admin guide: `:context: administration_guide` → anchors end with `_administration_guide`
+   - User guide: `:context: user_guide` → anchors end with `_user_guide`
 
 #### Common cross-guide link issues
 
 | Issue | Example | Fix |
 |-------|---------|-----|
+| `{context}` in cross-guide anchor | `link:{prod-ag-url}some-id_{context}[...]` in user guide | Replace `_{context}` with `_administration_guide` (admin targets) or `_user_guide` (user targets) |
 | Empty link text on `link:` macro | `link:{prod-ag-url}target-id[]` | Add descriptive text: `link:{prod-ag-url}target-id[Configuring feature]` |
 | Legacy target ID | `link:{prod-ug-url}old-section-name[...]` | Update to match current `[id="..."]` in target file |
 | Non-existent target | `link:{prod-ug-url}removed-content[...]` | Remove link or redirect to replacement content |
