@@ -79,20 +79,36 @@ Or invoke individual skills:
 
 ## Automation scripts
 
-Ten Python scripts in `skills/cqa-assess/scripts/` automate repeatable checks. The `cqa-assess` command runs them automatically. Each script accepts a docs repo path, prints structured output, and exits `0` (pass), `1` (issues found), or `2` (invalid arguments).
+Ten check scripts and one utility in `skills/cqa-assess/scripts/` automate repeatable checks. The `cqa-assess` command runs them automatically. Each script accepts a docs repo path, prints structured output, and exits `0` (pass), `1` (issues found), or `2` (invalid arguments). Python 3.9+ stdlib only, no pip install needed.
 
-| Script | Parameters | What it checks |
-|--------|-----------|----------------|
-| `check-product-names.py` | P18, O1, O3 | Hardcoded product names in prose and image alt text |
-| `check-conscious-language.py` | Q23, O4 | Exclusionary terms (master, slave, whitelist, blacklist, dummy) |
-| `check-content-types.py` | P3, P4, P5 | Filename prefix vs content type declaration, required elements |
-| `check-tp-disclaimers.py` | P19, O5 | Technology Preview and Developer Preview disclaimer compliance |
-| `check-external-links.py` | Q17 | External URL extraction and domain categorization |
-| `check-legal-notices.py` | O2 | LICENSE file and docinfo.xml existence |
-| `check-scannability.py` | Q1 | Sentence length, paragraph length, list conversion opportunities |
-| `check-simple-words.py` | Q3 | Complex word patterns (utilize, leverage, in order to, etc.) |
-| `check-readability.py` | Q4 | Flesch-Kincaid Grade Level per file and overall |
-| `check-fluff.py` | Q5 | Self-referential patterns, forward-referencing, filler phrases |
+**Directory support:** All scripts scan `assemblies/`, `modules/`, `topics/`, and `snippets/` by default. Repos using `modules/` instead of `topics/` work without configuration. Use `--scan-dirs` to override.
+
+| Script | Parameters | What it checks | Extra flags |
+|--------|-----------|----------------|-------------|
+| `check-product-names.py` | P18, O1, O3 | Hardcoded product names in prose and image alt text | `--config`, `--fix` |
+| `check-conscious-language.py` | Q23, O4 | Exclusionary terms (master, slave, whitelist, blacklist, dummy) | |
+| `check-content-types.py` | P3, P4, P5 | Filename prefix vs content type declaration, required elements | `--no-prefix-check` |
+| `check-tp-disclaimers.py` | P19, O5 | Technology Preview and Developer Preview disclaimer compliance | |
+| `check-external-links.py` | Q17 | External URL extraction and domain categorization | `--details` |
+| `check-legal-notices.py` | O2 | LICENSE file and docinfo.xml existence | `--repo-root` |
+| `check-scannability.py` | Q1 | Sentence length, paragraph length, list conversion opportunities | |
+| `check-simple-words.py` | Q3 | Complex word patterns (utilize, leverage, in order to, etc.) | |
+| `check-readability.py` | Q4 | Flesch-Kincaid Grade Level per file and overall | |
+| `check-fluff.py` | Q5 | Self-referential patterns, forward-referencing, filler phrases | |
+| `resolve-includes.py` | (utility) | Recursively resolve `include::` tree from any `.adoc` file | `--format`, `--include-root` |
+
+### Common flags
+
+| Flag | Scripts | Description |
+|------|---------|-------------|
+| `--scan-dirs` | All `check-*` scripts except `check-legal-notices.py` | Override default scan directories (e.g., `--scan-dirs topics assemblies`) |
+| `--config FILE` | `check-product-names.py` | JSON config for repo-specific product names and attributes |
+| `--fix` | `check-product-names.py` | Auto-replace hardcoded product names with attributes |
+| `--no-prefix-check` | `check-content-types.py` | Detect content type from `:_mod-docs-content-type:` instead of filename prefix |
+| `--repo-root DIR` | `check-legal-notices.py` | Repo root for LICENSE file check (auto-detects `.git` if omitted) |
+| `--details` | `check-external-links.py` | Show per-URL breakdown by domain |
+| `--format` | `resolve-includes.py` | Output format: `files` (default), `tree`, or `json` |
+| `--include-root` | `resolve-includes.py` | Include the root file itself in the output |
 
 ## Scoring
 

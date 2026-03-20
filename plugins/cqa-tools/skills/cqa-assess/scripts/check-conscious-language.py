@@ -35,16 +35,18 @@ EXCLUSIONARY_TERMS = [
 MASTER_TERM = ("master", ["primary", "main", "source"], False)
 
 # Directories to scan (relative to DOCS_DIR)
-SCAN_DIRS = ["assemblies", "topics", "snippets"]
+DEFAULT_SCAN_DIRS = ["assemblies", "modules", "topics", "snippets"]
 
 # Directories to skip
 SKIP_DIRS = {"legacy-content-do-not-use"}
 
 
-def collect_adoc_files(docs_dir):
+def collect_adoc_files(docs_dir, scan_dirs=None):
     """Collect all .adoc files from scan directories."""
+    if scan_dirs is None:
+        scan_dirs = DEFAULT_SCAN_DIRS
     files = []
-    for scan_dir in SCAN_DIRS:
+    for scan_dir in scan_dirs:
         full_dir = os.path.join(docs_dir, scan_dir)
         if not os.path.isdir(full_dir):
             continue
@@ -238,6 +240,13 @@ def main():
         "docs_dir",
         help="Path to the documentation repository root",
     )
+    parser.add_argument(
+        "--scan-dirs",
+        nargs="+",
+        default=DEFAULT_SCAN_DIRS,
+        help=("Directories to scan relative to docs_dir "
+              f"(default: {' '.join(DEFAULT_SCAN_DIRS)})"),
+    )
     args = parser.parse_args()
 
     docs_dir = os.path.abspath(args.docs_dir)
@@ -248,11 +257,11 @@ def main():
     print("Conscious Language Check")
     print("=" * 60)
     print(f"Scanning: {docs_dir}")
-    print(f"Directories: {', '.join(SCAN_DIRS)}")
+    print(f"Directories: {', '.join(args.scan_dirs)}")
     print(f"Excluding: {', '.join(SKIP_DIRS)}")
     print()
 
-    files = collect_adoc_files(docs_dir)
+    files = collect_adoc_files(docs_dir, scan_dirs=args.scan_dirs)
     all_findings = []
     for filepath, rel_path in files:
         all_findings.extend(check_file(filepath, rel_path))

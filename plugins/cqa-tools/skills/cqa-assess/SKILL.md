@@ -20,13 +20,19 @@ Before starting any checks, ask the user two questions:
 
 **Scope** — what to assess:
 - **Entire repo** — all files in the repository
-- **One assembly** — a specific assembly file and all topics it includes (resolve `include::` directives to find the topic files)
+- **One assembly** — a specific assembly file and all topics it includes (use `resolve-includes.py` to build the file list — see Include-tree resolution below)
 - **One topic** — a single topic file
 - **One parameter group** — a specific skill (e.g., editorial only) across the chosen file scope
 
 **Mode** — what to do with issues:
 - **Assess only** — report issues and score, but do not modify any files
 - **Assess and fix** — report issues, fix them, re-verify, then score
+
+**Severity filtering** — which parameters to run:
+- **All** (default) — run all parameters in dependency order
+- **Required only** — run only Required-level parameters (blockers). Skip Important-level parameters.
+- **One skill** — run only the specified skill (e.g., `cqa-legal-branding`). Use the Skill Map below to identify which parameters are covered.
+- **Skip list** — run all parameters except the specified ones (e.g., skip O9, O10 if Pantheon is not used)
 
 ### Steps 1-8: For each parameter
 
@@ -71,24 +77,53 @@ Recommended order (dependencies flow downward):
 10. `cqa-tools:cqa-onboarding` — publishing readiness
 11. `cqa-tools:cqa-report` — final summary
 
+## Include-tree resolution
+
+When the user chooses "One assembly" scope, use `resolve-includes.py` to build the exact file list before running any checks. This prevents scope leakage (scanning files outside the assembly's include tree).
+
+```bash
+# List all files included by an assembly (recursively follows include:: directives)
+python3 scripts/resolve-includes.py "$DOCS_REPO/assemblies/admin/assembly_installing.adoc" --base-dir "$DOCS_REPO"
+
+# Tree view showing the include hierarchy
+python3 scripts/resolve-includes.py "$DOCS_REPO/assemblies/admin/assembly_installing.adoc" --base-dir "$DOCS_REPO" --format tree
+
+# JSON output for programmatic use
+python3 scripts/resolve-includes.py "$DOCS_REPO/assemblies/admin/assembly_installing.adoc" --base-dir "$DOCS_REPO" --format json
+
+# Include the root file itself in the output
+python3 scripts/resolve-includes.py "$DOCS_REPO/assemblies/admin/assembly_installing.adoc" --base-dir "$DOCS_REPO" --include-root
+```
+
+The script handles symlinks, attribute placeholders in paths, circular includes, and conditional includes (`ifdef`/`ifndef`). Exit codes: 0 (all resolved), 1 (some unresolved), 2 (invalid arguments).
+
+**Scoping workflow:**
+
+1. Run `resolve-includes.py` to get the file list for the assembly
+2. Pass only those files to each check script via `--scan-dirs` or by filtering output
+3. Score based only on issues within the scoped files
+
 ## Automation Scripts
 
-Reusable scripts in `skills/cqa-assess/scripts/` automate repetitive checks. Each script accepts a docs repo path and exits 0 (pass) or 1 (issues found). Python 3.9+ stdlib only.
+Reusable scripts in `skills/cqa-assess/scripts/` automate repetitive checks. Each script accepts a docs repo path and exits 0 (pass), 1 (issues found), or 2 (invalid arguments). Python 3.9+ stdlib only.
 
-| Script | Skill | Parameters |
-|--------|-------|-----------|
-| `check-product-names.py` | `cqa-tools:cqa-legal-branding` | P18, O1, O3 |
-| `check-conscious-language.py` | `cqa-tools:cqa-legal-branding` | Q23, O4 |
-| `check-content-types.py` | `cqa-tools:cqa-modularization` | P3, P4, P5 |
-| `check-tp-disclaimers.py` | `cqa-tools:cqa-legal-branding` | P19, O5 |
-| `check-external-links.py` | `cqa-tools:cqa-legal-branding` | Q17 |
-| `check-legal-notices.py` | `cqa-tools:cqa-legal-branding` | O2 |
-| `check-scannability.py` | `cqa-tools:cqa-editorial` | Q1 |
-| `check-simple-words.py` | `cqa-tools:cqa-editorial` | Q3 |
-| `check-readability.py` | `cqa-tools:cqa-editorial` | Q4 |
-| `check-fluff.py` | `cqa-tools:cqa-editorial` | Q5 |
+All check scripts (except `check-legal-notices.py`) scan `assemblies/`, `modules/`, `topics/`, and `snippets/` by default. Use `--scan-dirs` to override (e.g., `--scan-dirs topics assemblies` to skip snippets). `check-legal-notices.py` checks `titles/*/` for docinfo.xml and the repo root for LICENSE — use `--repo-root` to specify the repo root when the docs directory is a subdirectory.
 
-Run all at once:
+| Script | Skill | Parameters | Extra flags |
+|--------|-------|-----------|-------------|
+| `check-product-names.py` | `cqa-tools:cqa-legal-branding` | P18, O1, O3 | `--config`, `--fix` |
+| `check-conscious-language.py` | `cqa-tools:cqa-legal-branding` | Q23, O4 | |
+| `check-content-types.py` | `cqa-tools:cqa-modularization` | P3, P4, P5 | `--no-prefix-check` |
+| `check-tp-disclaimers.py` | `cqa-tools:cqa-legal-branding` | P19, O5 | |
+| `check-external-links.py` | `cqa-tools:cqa-legal-branding` | Q17 | `--details` |
+| `check-legal-notices.py` | `cqa-tools:cqa-legal-branding` | O2 | `--repo-root` |
+| `check-scannability.py` | `cqa-tools:cqa-editorial` | Q1 | |
+| `check-simple-words.py` | `cqa-tools:cqa-editorial` | Q3 | |
+| `check-readability.py` | `cqa-tools:cqa-editorial` | Q4 | |
+| `check-fluff.py` | `cqa-tools:cqa-editorial` | Q5 | |
+| `resolve-includes.py` | (utility) | — | `--format`, `--include-root` |
+
+Run all check scripts at once:
 
 ```bash
 for script in scripts/check-*.py; do
@@ -100,7 +135,9 @@ done
 ## Important Rules
 
 - **Respect the user's chosen mode.** In assess-only mode, never modify files. In assess-and-fix mode, fix everything before scoring.
-- **Respect the user's chosen scope.** Only assess files within the scope (repo, assembly + its topics, or single topic). Do not scan files outside the scope.
+- **Respect the user's chosen scope.** Only assess files within the scope (repo, assembly + its topics, or single topic). Do not scan files outside the scope. For assembly scope, use `resolve-includes.py` to determine the exact file list.
+- **Respect severity filtering.** If the user selected "Required only" or provided a skip list, only run the applicable parameters.
 - **0 errors, 0 warnings for automated checks.** Never suppress or ignore.
 - **Evidence before claims.** Run the verification command, read the output, then state the score.
+- **Cross-reference awareness.** Some parameters overlap across skills (e.g., P12 prerequisites in both cqa-procedures and cqa-modularization). When both skills run, use the canonical skill's result and skip the duplicate. See each skill's Cross-references section.
 - **Update project rules** with any new rules discovered during the assessment.

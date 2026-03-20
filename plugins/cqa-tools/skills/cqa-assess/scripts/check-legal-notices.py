@@ -25,6 +25,22 @@ import sys
 from datetime import datetime
 
 
+def find_repo_root(start_dir):
+    """Walk up from start_dir looking for a .git directory.
+
+    Returns the parent directory containing .git, or None if not found.
+    """
+    current = os.path.abspath(start_dir)
+    while True:
+        if os.path.isdir(os.path.join(current, ".git")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            # Reached filesystem root without finding .git
+            return None
+        current = parent
+
+
 def check_license_file(docs_dir):
     """Check that a LICENSE or LICENCE file exists at the repo root."""
     for name in ["LICENSE", "LICENCE", "LICENSE.md", "LICENSE.txt"]:
@@ -91,7 +107,14 @@ def main():
     )
     parser.add_argument(
         "docs_dir",
-        help="Path to the documentation repository root",
+        help="Path to the documentation directory (or repository root)",
+    )
+    parser.add_argument(
+        "--repo-root",
+        default=None,
+        help="Repository root where LICENSE file should be found. "
+             "If not specified, auto-detects by walking up from docs_dir "
+             "looking for a .git directory. Falls back to docs_dir.",
     )
     args = parser.parse_args()
 
@@ -100,19 +123,28 @@ def main():
         print(f"Error: {docs_dir} is not a directory", file=sys.stderr)
         sys.exit(2)
 
+    # Determine the repo root for the LICENSE check
+    if args.repo_root is not None:
+        repo_root = os.path.abspath(args.repo_root)
+    else:
+        detected = find_repo_root(docs_dir)
+        repo_root = detected if detected is not None else docs_dir
+
     current_year = datetime.now().year
 
     print("Copyright and Legal Notice Check")
     print("=" * 60)
     print(f"Scanning: {docs_dir}")
+    if repo_root != docs_dir:
+        print(f"Repo root (for LICENSE): {repo_root}")
     print(f"Current year: {current_year}")
     print()
 
     issues = []
 
-    # 1. Check LICENSE file
+    # 1. Check LICENSE file (uses repo_root, not docs_dir)
     print("1. License file:")
-    found, name, path = check_license_file(docs_dir)
+    found, name, path = check_license_file(repo_root)
     if found:
         print(f"   FOUND: {name}")
         # Check if it's non-empty

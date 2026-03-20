@@ -25,7 +25,7 @@ If not installed, stop and tell the user to install Vale v3.x+. Do not install i
 
 ### 1b. Identify the docs repo
 
-Ask the user for the path to their Red Hat modular documentation repository. This is the directory that contains `assemblies/`, `topics/`, and `titles/` directories.
+Ask the user for the path to their Red Hat modular documentation repository. This is the directory that contains `assemblies/`, `topics/` (or `modules/`), and `titles/` directories.
 
 Store this as `DOCS_REPO` for all subsequent steps.
 
@@ -110,10 +110,11 @@ If any of these are missing, warn the user and offer to fix the config.
 
 ## Step 2: Run Vale
 
-Run Vale from the docs repo root against assemblies, topics, and master files:
+Run Vale from the docs repo root against assemblies, topics (or modules), and master files:
 
 ```bash
 cd "$DOCS_REPO"
+# Adjust directory names to match your repo structure (topics/ or modules/)
 vale assemblies/ topics/ titles/administration_guide/master.adoc titles/user_guide/master.adoc
 ```
 

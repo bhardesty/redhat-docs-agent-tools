@@ -14,6 +14,10 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 | Q21 | Tables have captions and are clearly labeled | Important |
 | Q22 | Images have captions and meaningful alt text | Important |
 
+## Directory note
+
+Some repos use `modules/` instead of `topics/` for content files. All `topics/` references in this skill apply equally to `modules/`. The automation scripts accept `--scan-dirs` to override the default scan directories.
+
 ## Checks
 
 ### Q19: Screenshot usage (IBM Style screen capture guidelines)

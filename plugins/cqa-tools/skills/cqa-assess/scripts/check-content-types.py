@@ -42,17 +42,19 @@ PROCEDURE_ONLY_TITLES = {
     ".Next steps", ".Next step",
 }
 
-# Directories to scan
-SCAN_DIRS = ["assemblies", "topics", "snippets"]
+# Directories to scan (default; overridable via --scan-dirs)
+DEFAULT_SCAN_DIRS = ["assemblies", "modules", "topics", "snippets"]
 
 # Directories to skip
 SKIP_DIRS = {"legacy-content-do-not-use"}
 
 
-def collect_adoc_files(docs_dir):
+def collect_adoc_files(docs_dir, scan_dirs=None):
     """Collect all .adoc files from scan directories."""
+    if scan_dirs is None:
+        scan_dirs = DEFAULT_SCAN_DIRS
     files = []
-    for scan_dir in SCAN_DIRS:
+    for scan_dir in scan_dirs:
         full_dir = os.path.join(docs_dir, scan_dir)
         if not os.path.isdir(full_dir):
             continue
@@ -100,8 +102,15 @@ def parse_code_block_lines(lines):
     return code_lines
 
 
-def check_file(filepath, rel_path, filename):
+def check_file(filepath, rel_path, filename, skip_prefix_check=False):
     """Check a single file for content type compliance.
+
+    Args:
+        filepath: Absolute path to the file.
+        rel_path: Path relative to docs_dir.
+        filename: Basename of the file.
+        skip_prefix_check: If True, skip the PREFIX check and fall back to
+            detecting the content type from :_mod-docs-content-type:.
 
     Returns a list of issue dicts.
     """
@@ -118,36 +127,53 @@ def check_file(filepath, rel_path, filename):
     # 1. Check filename prefix
     prefix = get_prefix(filename)
     if prefix is None:
-        issues.append({
-            "file": rel_path,
-            "check": "PREFIX",
-            "message": f"No recognized prefix. Expected one of: {', '.join(PREFIX_TO_TYPE.keys())}",
-        })
-        # Cannot do further checks without knowing expected type
-        return issues
-
-    expected_type = PREFIX_TO_TYPE[prefix]
+        if skip_prefix_check:
+            # Try to detect content type from :_mod-docs-content-type: attribute
+            declared_type = None
+            for line in lines:
+                m = re.match(r'^:_mod-docs-content-type:\s*(\S+)', line)
+                if m:
+                    declared_type = m.group(1).upper()
+                    break
+            if declared_type is None:
+                # Neither prefix nor declared type — skip this file entirely
+                return issues
+            expected_type = declared_type
+        else:
+            issues.append({
+                "file": rel_path,
+                "check": "PREFIX",
+                "message": f"No recognized prefix. Expected one of: {', '.join(PREFIX_TO_TYPE.keys())}",
+            })
+            # Cannot do further checks without knowing expected type
+            return issues
+    else:
+        expected_type = PREFIX_TO_TYPE[prefix]
 
     # 2. Check :_mod-docs-content-type: attribute
-    declared_type = None
-    for line in lines:
-        m = re.match(r'^:_mod-docs-content-type:\s*(\S+)', line)
-        if m:
-            declared_type = m.group(1).upper()
-            break
+    # When prefix was None and skip_prefix_check is True, declared_type was
+    # already read in the fallback path above — no need to re-read or check
+    # for mismatch (there is no prefix to mismatch against).
+    if prefix is not None:
+        declared_type = None
+        for line in lines:
+            m = re.match(r'^:_mod-docs-content-type:\s*(\S+)', line)
+            if m:
+                declared_type = m.group(1).upper()
+                break
 
-    if declared_type is None:
-        issues.append({
-            "file": rel_path,
-            "check": "CONTENT_TYPE_MISSING",
-            "message": f"Missing :_mod-docs-content-type: attribute. Expected: {expected_type}",
-        })
-    elif declared_type != expected_type:
-        issues.append({
-            "file": rel_path,
-            "check": "CONTENT_TYPE_MISMATCH",
-            "message": f"Prefix '{prefix}' expects {expected_type} but declared {declared_type}",
-        })
+        if declared_type is None:
+            issues.append({
+                "file": rel_path,
+                "check": "CONTENT_TYPE_MISSING",
+                "message": f"Missing :_mod-docs-content-type: attribute. Expected: {expected_type}",
+            })
+        elif declared_type != expected_type:
+            issues.append({
+                "file": rel_path,
+                "check": "CONTENT_TYPE_MISMATCH",
+                "message": f"Prefix '{prefix}' expects {expected_type} but declared {declared_type}",
+            })
 
     # Snippets have fewer requirements — skip remaining checks
     if expected_type == "SNIPPET":
@@ -251,6 +277,20 @@ def main():
         "docs_dir",
         help="Path to the documentation repository root",
     )
+    parser.add_argument(
+        "--scan-dirs",
+        nargs="+",
+        default=DEFAULT_SCAN_DIRS,
+        metavar="DIR",
+        help=f"Directories to scan (default: {' '.join(DEFAULT_SCAN_DIRS)})",
+    )
+    parser.add_argument(
+        "--no-prefix-check",
+        action="store_true",
+        default=False,
+        help="Skip filename prefix check. Detect content type from "
+             ":_mod-docs-content-type: attribute instead.",
+    )
     args = parser.parse_args()
 
     docs_dir = os.path.abspath(args.docs_dir)
@@ -261,14 +301,17 @@ def main():
     print("Content Type Compliance Check")
     print("=" * 60)
     print(f"Scanning: {docs_dir}")
-    print(f"Directories: {', '.join(SCAN_DIRS)}")
+    print(f"Directories: {', '.join(args.scan_dirs)}")
     print(f"Excluding: {', '.join(SKIP_DIRS)}")
+    if args.no_prefix_check:
+        print("Prefix check: DISABLED (using :_mod-docs-content-type: fallback)")
     print()
 
-    files = collect_adoc_files(docs_dir)
+    files = collect_adoc_files(docs_dir, scan_dirs=args.scan_dirs)
     all_issues = []
     for filepath, rel_path, filename in files:
-        all_issues.extend(check_file(filepath, rel_path, filename))
+        all_issues.extend(check_file(filepath, rel_path, filename,
+                                     skip_prefix_check=args.no_prefix_check))
 
     # Group by check type
     by_check = {}

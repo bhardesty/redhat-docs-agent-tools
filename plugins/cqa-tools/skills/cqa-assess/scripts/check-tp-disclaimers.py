@@ -54,8 +54,8 @@ DP_REQUIRED_PHRASES = [
     "access.redhat.com/support/offerings/devpreview",
 ]
 
-# Directories to scan
-SCAN_DIRS = ["assemblies", "topics", "snippets"]
+# Directories to scan (default; overridable via --scan-dirs)
+DEFAULT_SCAN_DIRS = ["assemblies", "modules", "topics", "snippets"]
 SNIPPET_DIR = "snippets"
 
 # Directories to skip
@@ -72,7 +72,7 @@ TABLE_CONTEXT_PATTERNS = [
 def collect_adoc_files(docs_dir, scan_dirs=None):
     """Collect all .adoc files from scan directories."""
     if scan_dirs is None:
-        scan_dirs = SCAN_DIRS
+        scan_dirs = DEFAULT_SCAN_DIRS
     files = []
     for scan_dir in scan_dirs:
         full_dir = os.path.join(docs_dir, scan_dir)
@@ -251,6 +251,13 @@ def main():
         "docs_dir",
         help="Path to the documentation repository root",
     )
+    parser.add_argument(
+        "--scan-dirs",
+        nargs="+",
+        default=DEFAULT_SCAN_DIRS,
+        metavar="DIR",
+        help=f"Directories to scan (default: {' '.join(DEFAULT_SCAN_DIRS)})",
+    )
     args = parser.parse_args()
 
     docs_dir = os.path.abspath(args.docs_dir)
@@ -261,6 +268,7 @@ def main():
     print("Technology Preview / Developer Preview Disclaimer Check")
     print("=" * 60)
     print(f"Scanning: {docs_dir}")
+    print(f"Directories: {', '.join(args.scan_dirs)}")
     print()
 
     issues = []
@@ -291,7 +299,7 @@ def main():
     print()
 
     # 2. Find all TP/DP mentions
-    files = collect_adoc_files(docs_dir)
+    files = collect_adoc_files(docs_dir, scan_dirs=args.scan_dirs)
     all_findings = []
     for filepath, rel_path in files:
         all_findings.extend(find_tp_dp_mentions(filepath, rel_path))

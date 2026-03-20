@@ -17,6 +17,15 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 | Q15 | Procedures include `.Verification` section | Important |
 | Q16 | Procedures include `Additional resources` section | Important |
 
+## Directory note
+
+Some repos use `modules/` instead of `topics/` for content files. All `topics/` references in this skill apply equally to `modules/`. The automation scripts accept `--scan-dirs` to override the default scan directories.
+
+## Cross-references
+
+- **P12 prerequisites** overlap with `cqa-tools:cqa-modularization` P4 Check 5 (same checks for label, formatting, count, declarative language, and placement). If both skills run, use the cqa-modularization result as canonical and skip the duplicate check here.
+- **Procedure title grammar** (gerund form) is canonically assessed in `cqa-tools:cqa-modularization` P3 Check 5a. This skill focuses on procedure-specific quality (step count, examples, verification, formatting).
+
 ## Step 1: Identify the docs repo
 
 Ask the user for the path to their Red Hat modular documentation repository. Store as `DOCS_REPO`.
@@ -209,9 +218,9 @@ Conditional steps must state the condition clearly, typically by leading with an
 Search all `proc_*.adoc` files for:
 
 ```bash
-grep -rn -i 'optional' topics/ --include='*.adoc'
-grep -rn -i 'if applicable' topics/ --include='*.adoc'
-grep -rn -i 'if needed' topics/ --include='*.adoc'
+grep -rn -i 'optional' topics/ modules/ --include='*.adoc' 2>/dev/null
+grep -rn -i 'if applicable' topics/ modules/ --include='*.adoc' 2>/dev/null
+grep -rn -i 'if needed' topics/ modules/ --include='*.adoc' 2>/dev/null
 ```
 
 ### Scoring
@@ -315,5 +324,6 @@ After fixing any violations, run Vale to ensure no new warnings were introduced:
 
 ```bash
 cd "$DOCS_REPO"
+# Adjust directory names to match your repo structure (topics/ or modules/)
 vale assemblies/ topics/ titles/administration_guide/master.adoc titles/user_guide/master.adoc
 ```

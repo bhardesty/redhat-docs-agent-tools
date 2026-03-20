@@ -29,7 +29,7 @@ import re
 import sys
 
 # Directories to scan (relative to DOCS_DIR)
-SCAN_DIRS = ["assemblies", "topics"]
+DEFAULT_SCAN_DIRS = ["assemblies", "modules", "topics"]
 
 # Directories to skip
 SKIP_DIRS = {"legacy-content-do-not-use"}
@@ -39,7 +39,7 @@ IDEAL_GRADE = 10       # Ideal target (9th-10th grade)
 MIN_GRADE = 12         # Minimum requirement (11th-12th grade)
 
 # Minimum sentences in a file to include in per-file analysis
-MIN_SENTENCES = 3
+MIN_SENTENCES = 10
 
 # Known AsciiDoc attributes and their resolved text.
 ATTR_RESOLVED = {
@@ -80,10 +80,12 @@ ATTR_WORD_COUNTS = {
 }
 
 
-def collect_adoc_files(docs_dir):
+def collect_adoc_files(docs_dir, scan_dirs=None):
     """Collect all .adoc files from scan directories."""
+    if scan_dirs is None:
+        scan_dirs = DEFAULT_SCAN_DIRS
     files = []
-    for scan_dir in SCAN_DIRS:
+    for scan_dir in scan_dirs:
         full_dir = os.path.join(docs_dir, scan_dir)
         if not os.path.isdir(full_dir):
             continue
@@ -373,6 +375,12 @@ def main():
         action="store_true",
         help="Show per-file grades for all files",
     )
+    parser.add_argument(
+        "--scan-dirs",
+        nargs="+",
+        default=DEFAULT_SCAN_DIRS,
+        help="Directories to scan (default: %(default)s)",
+    )
     args = parser.parse_args()
 
     docs_dir = os.path.abspath(args.docs_dir)
@@ -383,12 +391,12 @@ def main():
     print("Readability Check (Flesch-Kincaid Grade Level)")
     print("=" * 60)
     print(f"Scanning: {docs_dir}")
-    print(f"Directories: {', '.join(SCAN_DIRS)}")
+    print(f"Directories: {', '.join(args.scan_dirs)}")
     print(f"Thresholds: ideal <={IDEAL_GRADE}, "
           f"minimum <={MIN_GRADE}")
     print()
 
-    files = collect_adoc_files(docs_dir)
+    files = collect_adoc_files(docs_dir, args.scan_dirs)
     all_syllables = 0
     all_sentences = 0
     file_grades = []

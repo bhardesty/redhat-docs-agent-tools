@@ -17,6 +17,10 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 | Q10 | Admonitions not overused (max 3-4 per file) | Important |
 | Q11 | Assembly introductions target audience and persona | Important |
 
+## Directory note
+
+Some repos use `modules/` instead of `topics/` for content files. All `topics/` references in this skill apply equally to `modules/`. The automation scripts accept `--scan-dirs` to override the default scan directories.
+
 ## Checks
 
 ### Q6: Persona targeting

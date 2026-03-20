@@ -15,6 +15,10 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 | P10 | Titles support short, long, and descriptive forms (DITA) | Important |
 | P11 | Titles are brief, complete, and descriptive | Required |
 
+## Directory note
+
+Some repos use `modules/` instead of `topics/` for content files. All `topics/` references in this skill apply equally to `modules/`.
+
 ## Step 1: Identify the docs repo
 
 Ask the user for the path to their Red Hat modular documentation repository. Store as `DOCS_REPO`.

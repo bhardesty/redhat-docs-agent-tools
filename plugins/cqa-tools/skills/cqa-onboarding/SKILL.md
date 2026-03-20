@@ -16,6 +16,15 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 | O9 | Content published through Pantheon | Required |
 | O10 | Content published to official Red Hat site | Required |
 
+## Directory note
+
+Some repos use `modules/` instead of `topics/` for content files. All `topics/` references in this skill apply equally to `modules/`. The automation scripts accept `--scan-dirs` to override the default scan directories.
+
+## Cross-references
+
+- **O6 (support disclaimers)** overlaps with P19/O5 in `cqa-tools:cqa-legal-branding`. Use the cqa-legal-branding TP/DP disclaimer results as evidence for O6 compliance. O6 adds the community-supported component and unsupported configuration checks.
+- **O7 (SME/QE verification)** can use Q15 evidence from `cqa-tools:cqa-procedures` — a high percentage of procedures with `.Verification` sections is supporting evidence of testability.
+
 ## Step 1: Identify the docs repo
 
 Ask the user for the path to their Red Hat modular documentation repository. Store as `DOCS_REPO`.
@@ -42,10 +51,10 @@ All content must be clearly identified as supported, Technology Preview, or Deve
 
 ```bash
 # Find all support-related disclaimers
-grep -rn -i 'technology preview\|tech preview\|developer preview\|not supported\|unsupported\|community' topics/ assemblies/ --include='*.adoc'
+grep -rn -i 'technology preview\|tech preview\|developer preview\|not supported\|unsupported\|community' topics/ modules/ assemblies/ --include='*.adoc'
 
 # Find TP/DP snippet includes
-grep -rn 'snip_technology-preview\|snip_developer-preview' topics/ assemblies/ --include='*.adoc'
+grep -rn 'snip_technology-preview\|snip_developer-preview' topics/ modules/ assemblies/ --include='*.adoc'
 ```
 
 ### Scoring
@@ -119,28 +128,28 @@ All source content files must be in AsciiDoc (`.adoc`) format following the Red 
 1. **File format verification**:
    ```bash
    # Count all content files by extension
-   find "$DOCS_REPO/topics" "$DOCS_REPO/assemblies" "$DOCS_REPO/snippets" -type f | sed 's/.*\.//' | sort | uniq -c | sort -rn
+   find "$DOCS_REPO/topics" "$DOCS_REPO/modules" "$DOCS_REPO/assemblies" "$DOCS_REPO/snippets" -type f 2>/dev/null | sed 's/.*\.//' | sort | uniq -c | sort -rn
    ```
    All content files must be `.adoc`. No `.md` (Markdown), `.xml` (DocBook), `.dita`, or `.html` source files.
 
 2. **Encoding verification**:
    ```bash
    # Check for non-UTF-8 files in all content directories
-   file "$DOCS_REPO/topics/"**/*.adoc "$DOCS_REPO/assemblies/"**/*.adoc "$DOCS_REPO/snippets/"**/*.adoc | grep -v "UTF-8\|ASCII"
+   file "$DOCS_REPO/topics/"**/*.adoc "$DOCS_REPO/modules/"**/*.adoc "$DOCS_REPO/assemblies/"**/*.adoc "$DOCS_REPO/snippets/"**/*.adoc 2>/dev/null | grep -v "UTF-8\|ASCII"
    ```
    All files must be UTF-8 encoded.
 
 3. **Line endings**:
    ```bash
    # Check for Windows line endings (CRLF)
-   grep -rPl '\r\n' "$DOCS_REPO/topics/" "$DOCS_REPO/assemblies/" "$DOCS_REPO/snippets/" --include='*.adoc' | head -5
+   grep -rPl '\r\n' "$DOCS_REPO/topics/" "$DOCS_REPO/modules/" "$DOCS_REPO/assemblies/" "$DOCS_REPO/snippets/" --include='*.adoc' 2>/dev/null | head -5
    ```
    All files must use LF (Unix) line endings, not CRLF (Windows).
 
 4. **Directory structure**: Verify the repo follows Red Hat modular docs layout:
    - `titles/` — publishable guide entry points with `master.adoc`
    - `assemblies/` — assembly files (collections of topics)
-   - `topics/` — individual content modules
+   - `topics/` (or `modules/`) — individual content modules
    - `snippets/` — reusable inline fragments
    - `common/` — shared attributes and metadata
    - `images/` — image assets

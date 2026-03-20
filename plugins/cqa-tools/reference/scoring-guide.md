@@ -74,7 +74,7 @@ Each parameter assessment must include:
 | Q8 | Acronyms defined before use | Important | `cqa-user-focus` |
 | Q9 | Additional resources with useful links | Important | `cqa-user-focus` |
 | Q10 | Admonitions not overused | Important | `cqa-user-focus` |
-| Q11 | Assembly intro targets audience | Important | `cqa-titles-descriptions` |
+| Q11 | Assembly intro targets audience | Important | `cqa-user-focus` |
 | Q12 | Procedures <= 10 steps | Important | `cqa-procedures` |
 | Q13 | Procedures include command examples | Important | `cqa-procedures` |
 | Q14 | Optional/conditional steps formatted correctly | Important | `cqa-procedures` |

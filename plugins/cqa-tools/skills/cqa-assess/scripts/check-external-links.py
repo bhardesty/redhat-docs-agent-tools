@@ -24,7 +24,7 @@ from collections import defaultdict
 from urllib.parse import urlparse
 
 # Directories to scan
-SCAN_DIRS = ["assemblies", "topics", "snippets"]
+DEFAULT_SCAN_DIRS = ["assemblies", "modules", "topics", "snippets"]
 
 # Directories to skip
 SKIP_DIRS = {"legacy-content-do-not-use"}
@@ -81,10 +81,12 @@ AUTHORITATIVE_DOMAINS = {
 }
 
 
-def collect_adoc_files(docs_dir):
+def collect_adoc_files(docs_dir, scan_dirs=None):
     """Collect all .adoc files from scan directories."""
+    if scan_dirs is None:
+        scan_dirs = DEFAULT_SCAN_DIRS
     files = []
-    for scan_dir in SCAN_DIRS:
+    for scan_dir in scan_dirs:
         full_dir = os.path.join(docs_dir, scan_dir)
         if not os.path.isdir(full_dir):
             continue
@@ -215,6 +217,13 @@ def main():
         help="Path to the documentation repository root",
     )
     parser.add_argument(
+        "--scan-dirs",
+        nargs="+",
+        default=DEFAULT_SCAN_DIRS,
+        help=("Directories to scan relative to docs_dir "
+              f"(default: {' '.join(DEFAULT_SCAN_DIRS)})"),
+    )
+    parser.add_argument(
         "--details",
         action="store_true",
         help="Show individual URL details for each domain",
@@ -229,9 +238,10 @@ def main():
     print("External Link Categorization")
     print("=" * 60)
     print(f"Scanning: {docs_dir}")
+    print(f"Directories: {', '.join(args.scan_dirs)}")
     print()
 
-    files = collect_adoc_files(docs_dir)
+    files = collect_adoc_files(docs_dir, scan_dirs=args.scan_dirs)
     all_urls = []
     for filepath, rel_path in files:
         all_urls.extend(extract_urls(filepath, rel_path))

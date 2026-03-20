@@ -18,6 +18,7 @@ Exit codes:
 """
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -44,7 +45,7 @@ KNOWN_EXCEPTIONS = [
 ]
 
 # Directories to scan (relative to DOCS_DIR)
-SCAN_DIRS = ["assemblies", "topics", "snippets"]
+DEFAULT_SCAN_DIRS = ["assemblies", "modules", "topics", "snippets"]
 
 # Directories to skip entirely
 SKIP_DIRS = {"legacy-content-do-not-use"}
@@ -53,10 +54,12 @@ SKIP_DIRS = {"legacy-content-do-not-use"}
 SKIP_FILES = {"attributes.adoc"}
 
 
-def collect_adoc_files(docs_dir):
+def collect_adoc_files(docs_dir, scan_dirs=None):
     """Collect all .adoc files from scan directories, skipping exclusions."""
+    if scan_dirs is None:
+        scan_dirs = DEFAULT_SCAN_DIRS
     files = []
-    for scan_dir in SCAN_DIRS:
+    for scan_dir in scan_dirs:
         full_dir = os.path.join(docs_dir, scan_dir)
         if not os.path.isdir(full_dir):
             continue
@@ -245,6 +248,141 @@ def check_file(filepath, rel_path):
     return findings, None
 
 
+def _is_inside_backticks(line, match_start, match_end):
+    """Check if a match range falls inside backtick-delimited text."""
+    in_backtick = False
+    backtick_start = -1
+    for ci, ch in enumerate(line):
+        if ch != "`":
+            continue
+        if in_backtick:
+            if match_start > backtick_start and match_end <= ci:
+                return True
+            in_backtick = False
+        else:
+            in_backtick = True
+            backtick_start = ci
+    return False
+
+
+def _is_exception_at(line, match_start, match_end):
+    """Check if a product name occurrence at the given position is an exception.
+
+    Returns True if the occurrence is inside a known exception string,
+    backtick-delimited text, link text, or xref text.
+    """
+    # Known exception strings (UI labels, plugin names)
+    for exc in KNOWN_EXCEPTIONS:
+        for exc_match in re.finditer(re.escape(exc), line):
+            if match_start >= exc_match.start() and match_end <= exc_match.end():
+                return True
+
+    if _is_inside_backticks(line, match_start, match_end):
+        return True
+
+    if is_inside_pattern(line, match_start, match_end,
+                         r"link:[^\[]*\[([^\]]*)\]"):
+        return True
+
+    if is_inside_pattern(line, match_start, match_end,
+                         r"xref:[^\[]*\[([^\]]*)\]"):
+        return True
+
+    return False
+
+
+def _replace_name_in_line(line, name, attr):
+    """Replace all non-exception occurrences of a product name in a line.
+
+    Returns (modified_line, replacement_count).
+    """
+    if name not in line:
+        return line, 0
+
+    result = ""
+    search_start = 0
+    count = 0
+    while True:
+        idx = line.find(name, search_start)
+        if idx == -1:
+            result += line[search_start:]
+            break
+        match_end = idx + len(name)
+        if _is_exception_at(line, idx, match_end):
+            result += line[search_start:match_end]
+        else:
+            result += line[search_start:idx] + attr
+            count += 1
+        search_start = match_end
+    return result, count
+
+
+def _fix_file(abs_path):
+    """Apply product name replacements to a single file.
+
+    Returns the number of replacements made, or 0 if the file could not
+    be read or had no replaceable occurrences.
+    """
+    try:
+        with open(abs_path, "r", encoding="utf-8") as fh:
+            content = fh.read()
+    except (UnicodeDecodeError, OSError):
+        return 0
+
+    lines = content.splitlines(True)  # keep line endings
+    code_lines = parse_code_block_lines([l.rstrip("\n\r") for l in lines])
+
+    new_lines = []
+    replacements_made = 0
+
+    for line_idx, line in enumerate(lines):
+        if line_idx in code_lines:
+            new_lines.append(line)
+            continue
+        stripped = line.strip()
+        if stripped.startswith("//") or re.match(r"^:\w[\w-]*:", stripped):
+            new_lines.append(line)
+            continue
+
+        modified_line = line
+        for name, replacement in PRODUCT_NAMES:
+            attr = replacement.split(" or ")[0].strip()
+            modified_line, count = _replace_name_in_line(modified_line, name, attr)
+            replacements_made += count
+        new_lines.append(modified_line)
+
+    if replacements_made > 0:
+        with open(abs_path, "w", encoding="utf-8") as fh:
+            fh.write("".join(new_lines))
+
+    return replacements_made
+
+
+def apply_fixes(findings, docs_dir):
+    """Apply automatic fixes for PROSE and IMAGE_ALT violations.
+
+    Replaces hardcoded product names with recommended attributes in-place.
+    Processes replacements longest-match-first within each line to avoid
+    double-replacing overlapping matches.
+
+    Returns the total number of replacements made.
+    """
+    fixable = [f for f in findings if f["classification"] in ("PROSE", "IMAGE_ALT")]
+    if not fixable:
+        return 0
+
+    # Collect unique file paths that have fixable findings
+    file_paths = set()
+    for f in fixable:
+        file_paths.add(os.path.join(docs_dir, f["file"]))
+
+    total_replacements = 0
+    for abs_path in sorted(file_paths):
+        total_replacements += _fix_file(abs_path)
+
+    return total_replacements
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Check for hardcoded product names in AsciiDoc docs."
@@ -253,6 +391,24 @@ def main():
         "docs_dir",
         help="Path to the documentation repository root",
     )
+    parser.add_argument(
+        "--scan-dirs",
+        nargs="+",
+        default=DEFAULT_SCAN_DIRS,
+        help=("Directories to scan relative to docs_dir "
+              f"(default: {' '.join(DEFAULT_SCAN_DIRS)})"),
+    )
+    parser.add_argument(
+        "--config",
+        help="Path to a JSON config file for customizing product names, "
+             "exceptions, and skip patterns per repository",
+    )
+    parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Auto-fix PROSE and IMAGE_ALT violations by replacing "
+             "hardcoded product names with recommended attributes",
+    )
     args = parser.parse_args()
 
     docs_dir = os.path.abspath(args.docs_dir)
@@ -260,17 +416,38 @@ def main():
         print(f"Error: {docs_dir} is not a directory", file=sys.stderr)
         sys.exit(2)
 
+    # Apply config overrides if provided
+    global PRODUCT_NAMES, CASE_TYPO, KNOWN_EXCEPTIONS, SKIP_DIRS, SKIP_FILES
+    if args.config:
+        config_path = os.path.abspath(args.config)
+        try:
+            with open(config_path, "r", encoding="utf-8") as cf:
+                config = json.load(cf)
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"Error: failed to read config file: {exc}", file=sys.stderr)
+            sys.exit(2)
+        if "product_names" in config:
+            PRODUCT_NAMES = [tuple(pair) for pair in config["product_names"]]
+        if "case_typos" in config:
+            CASE_TYPO = tuple(config["case_typos"][0]) if config["case_typos"] else None
+        if "known_exceptions" in config:
+            KNOWN_EXCEPTIONS = list(config["known_exceptions"])
+        if "skip_dirs" in config:
+            SKIP_DIRS = set(config["skip_dirs"])
+        if "skip_files" in config:
+            SKIP_FILES = set(config["skip_files"])
+
     print("Product Name Check")
     print("=" * 60)
     print(f"Scanning: {docs_dir}")
-    print(f"Directories: {', '.join(SCAN_DIRS)}")
+    print(f"Directories: {', '.join(args.scan_dirs)}")
     print(f"Excluding: {', '.join(SKIP_DIRS)}, {', '.join(SKIP_FILES)}")
     print()
 
-    files = collect_adoc_files(docs_dir)
+    files = collect_adoc_files(docs_dir, scan_dirs=args.scan_dirs)
     if not files:
         print("Error: no .adoc files found under "
-              f"{', '.join(SCAN_DIRS)}", file=sys.stderr)
+              f"{', '.join(args.scan_dirs)}", file=sys.stderr)
         sys.exit(2)
 
     all_findings = []
@@ -339,6 +516,10 @@ def main():
           f"{len(exceptions)} exceptions, "
           f"{len(skipped)} skipped (comments/attributes)")
     print(f"Files scanned: {len(files)}")
+
+    if args.fix and total_issues > 0:
+        num_fixed = apply_fixes(all_findings, docs_dir)
+        print(f"\n--fix: {num_fixed} replacements made across files.")
 
     if total_issues > 0:
         print(f"\nResult: FAIL ({total_issues} issues found)")

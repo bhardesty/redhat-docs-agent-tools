@@ -287,13 +287,17 @@ Searches for exclusionary terms using whole-word matching. Automatically exclude
 
 The repository must include appropriate copyright and licensing information.
 
+> **Publishing pipeline note:** Some publishing pipelines (e.g., docs.redhat.com) inject legal notices at the platform level. If the repo relies on platform-injected legal notices instead of including them in source files, document this and adjust scoring accordingly. The script checks source-level compliance; platform behavior may satisfy the requirement even if the script reports issues.
+
 ### Automation
 
 ```bash
 python3 ../cqa-assess/scripts/check-legal-notices.py "$DOCS_REPO"
+# Use --repo-root if the docs directory is a subdirectory of the repo:
+python3 ../cqa-assess/scripts/check-legal-notices.py "$DOCS_REPO/book-dir" --repo-root "$DOCS_REPO"
 ```
 
-Checks LICENSE/LICENCE file existence, docinfo.xml presence in each `titles/*/` directory, and copyright year detection.
+Checks LICENSE/LICENCE file existence (auto-detects repo root by walking up to `.git`), docinfo.xml presence in each `titles/*/` directory, and copyright year detection.
 
 ### Check procedure
 
@@ -305,7 +309,7 @@ Checks LICENSE/LICENCE file existence, docinfo.xml presence in each `titles/*/` 
 
 | Score | Criteria |
 |-------|----------|
-| **4** | License file present; docinfo.xml in all title directories; copyright current |
+| **4** | License file present; docinfo.xml in all title directories; copyright current. (If publishing pipeline injects legal notices, note this as evidence.) |
 | **3** | License and docinfo present but copyright year outdated |
 | **2** | Missing docinfo in some title directories |
 | **1** | No license file or copyright notices |
