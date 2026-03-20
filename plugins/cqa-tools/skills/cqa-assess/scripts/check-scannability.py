@@ -192,12 +192,20 @@ def is_definition_list(line):
 
 
 def is_link_only_item(line):
-    """Check if a list item contains only a link/xref (no prose to check)."""
+    """Check if a list item contains only a link/xref (no prose to check).
+
+    Uses fullmatch to ensure the entire content after the list marker is a
+    single link or xref — items like ``* xref:foo[Install] to prepare``
+    contain trailing prose and must NOT be skipped.
+    """
     s = line.strip()
     # Remove unordered or ordered list markers
     content = re.sub(r'^(?:\*{1,3}|\.{1,3})\s+', '', s)
-    # Check if remaining content is entirely a link or xref
-    if re.match(r'^(xref:|link:|<<)[^\s]*\[[^\]]*\]\s*$', content):
+    # Require the entire remaining content to be a single link/xref
+    if re.fullmatch(
+        r'(?:xref:\S+\[[^\]]*\]|link:\S+\[[^\]]*\]|<<[^>]+>>)',
+        content,
+    ):
         return True
     return False
 

@@ -175,11 +175,9 @@ def classify_match(line, match_start, matched_text):
 
     # Known exception (UI label, plugin name)
     for exc in KNOWN_EXCEPTIONS:
-        # Check if the matched text is part of a known exception on this line
-        exc_idx = line.find(exc)
-        if exc_idx != -1:
-            exc_range = range(exc_idx, exc_idx + len(exc))
-            if match_start >= exc_idx and match_end <= exc_idx + len(exc):
+        # Check every occurrence of the exception on this line
+        for exc_match in re.finditer(re.escape(exc), line):
+            if match_start >= exc_match.start() and match_end <= exc_match.end():
                 return "KNOWN_EXCEPTION"
 
     # Inside backticks (UI label or command)
@@ -216,14 +214,14 @@ def classify_match(line, match_start, matched_text):
 def check_file(filepath, rel_path):
     """Check a single file for hardcoded product names.
 
-    Returns a list of finding dicts.
+    Returns (findings_list, error_string_or_None).
     """
     findings = []
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
-    except (UnicodeDecodeError, IOError):
-        return findings
+    except (UnicodeDecodeError, OSError) as exc:
+        return findings, f"{rel_path}: {exc}"
 
     lines = content.splitlines()
     code_lines = parse_code_block_lines(lines)
@@ -244,7 +242,7 @@ def check_file(filepath, rel_path):
                 "classification": classification,
             })
 
-    return findings
+    return findings, None
 
 
 def main():
@@ -270,9 +268,23 @@ def main():
     print()
 
     files = collect_adoc_files(docs_dir)
+    if not files:
+        print("Error: no .adoc files found under "
+              f"{', '.join(SCAN_DIRS)}", file=sys.stderr)
+        sys.exit(2)
+
     all_findings = []
+    read_errors = []
     for filepath, rel_path in files:
-        all_findings.extend(check_file(filepath, rel_path))
+        findings, error = check_file(filepath, rel_path)
+        all_findings.extend(findings)
+        if error is not None:
+            read_errors.append(error)
+
+    if read_errors:
+        for error in read_errors:
+            print(f"Error: failed to read {error}", file=sys.stderr)
+        sys.exit(2)
 
     # Group by classification
     violations = [f for f in all_findings if f["classification"] == "PROSE"]

@@ -201,7 +201,11 @@ def is_link_only_item(line):
     s = line.strip()
     # Remove unordered or ordered list markers
     content = re.sub(r'^(?:\*{1,3}|\.{1,3})\s+', '', s)
-    if re.match(r'^(xref:|link:|<<)[^\s]*\[[^\]]*\]\s*$', content):
+    # Require the entire remaining content to be a single link/xref
+    if re.fullmatch(
+        r'(?:xref:\S+\[[^\]]*\]|link:\S+\[[^\]]*\]|<<[^>]+>>)',
+        content,
+    ):
         return True
     return False
 
@@ -385,7 +389,6 @@ def main():
     print()
 
     files = collect_adoc_files(docs_dir)
-    all_words = []
     all_syllables = 0
     all_sentences = 0
     file_grades = []
@@ -394,7 +397,6 @@ def main():
         result = check_file(filepath)
         if result["sentences"] < MIN_SENTENCES:
             continue
-        all_words.extend(range(result["words"]))  # just for count
         all_syllables += result["syllables"]
         all_sentences += result["sentences"]
         file_grades.append((

@@ -72,8 +72,12 @@ def check_docinfo(title_dir, title_name):
     if year_match:
         return True, True, int(year_match.group(1)), docinfo_path
 
-    # Year range: 2020-2024 (matches both hyphen-minus '-' and EN DASH '–')
-    year_match = re.search(r'(\d{4})\s*[-–]\s*(\d{4})', content)
+    # Year range with copyright context: Copyright 2020-2024 / © 2020–2024
+    year_match = re.search(
+        r'(?:Copyright|©|\(c\)|All rights reserved)[^\n]{0,80}?(\d{4})\s*[-\u2013]\s*(\d{4})',
+        content,
+        re.IGNORECASE,
+    )
     if year_match:
         return True, True, int(year_match.group(2)), docinfo_path
 
@@ -121,10 +125,14 @@ def main():
 
     # 2. Check docinfo.xml in each title directory
     print("2. Document metadata (docinfo.xml):")
+    titles_path = os.path.join(docs_dir, "titles")
     title_dirs = find_title_dirs(docs_dir)
-    if not title_dirs:
+    if not os.path.isdir(titles_path):
         print("   No titles/ directory found")
         issues.append("No titles/ directory found")
+    elif not title_dirs:
+        print("   titles/ directory exists but contains no title subdirectories")
+        issues.append("titles/ directory exists but contains no title subdirectories")
     else:
         for title_name, title_dir in title_dirs:
             exists, has_copyright, year, docinfo_path = check_docinfo(title_dir, title_name)

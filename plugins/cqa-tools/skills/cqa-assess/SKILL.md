@@ -91,7 +91,7 @@ Reusable scripts in `skills/cqa-assess/scripts/` automate repetitive checks. Eac
 Run all at once:
 
 ```bash
-for script in ${CLAUDE_PLUGIN_ROOT}/skills/cqa-assess/scripts/check-*.py; do
+for script in scripts/check-*.py; do
   python3 "$script" "$DOCS_REPO"
   echo "---"
 done
