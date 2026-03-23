@@ -73,12 +73,12 @@ The orchestrator looks for workflow YAML in this order:
 2. `.claude/docs-workflow.yaml` — project-level default
 3. Plugin default — `skills/docs-orchestrator/defaults/docs-workflow.yaml`
 
-To customize, copy the default into your docs repo and edit it:
+To customize, download the default into your docs repo and edit it:
 
 ```bash
 mkdir -p .claude
-cp $(claude plugin-dir docs-tools)/skills/docs-orchestrator/defaults/docs-workflow.yaml \
-   .claude/docs-workflow.yaml
+curl -sL https://raw.githubusercontent.com/redhat-documentation/redhat-docs-agent-tools/main/plugins/docs-tools/skills/docs-orchestrator/defaults/docs-workflow.yaml \
+   -o .claude/docs-workflow.yaml
 ```
 
 Then modify `.claude/docs-workflow.yaml` to add, remove, or reorder steps:
