@@ -162,30 +162,60 @@ Your CI environment needs:
 - **Python 3** with required packages (see [Prerequisites](#prerequisites))
 - The docs-tools plugin installed or available in the runner
 
+### How it works
+
+The CI pattern has two phases:
+
+1. **Phase 1 — JIRA ready check**: The `docs-tools:docs-workflow-jira-ready` skill queries JIRA for tickets matching a JQL filter, excludes tickets that already have a workflow progress file or tracking label, and returns a JSON list of actionable ticket IDs.
+2. **Phase 2 — Orchestrator loop**: For each ready ticket, run the `docs-tools:docs-orchestrator` skill to execute the full documentation workflow.
+
+All invocations go through `claude -p` (headless mode) so the plugin system resolves script paths via `CLAUDE_PLUGIN_ROOT`. No local checkout of the tools repo is needed — only the plugin installed in Claude Code.
+
 ### GitHub Actions example
 
 ```yaml
 name: Docs Workflow
 on:
-  workflow_dispatch:
-    inputs:
-      ticket:
-        description: 'JIRA ticket ID (e.g., PROJ-123)'
-        required: true
-      workflow:
-        description: 'Workflow variant (default, quick, full)'
-        default: 'default'
+  schedule:
+    - cron: '0 8 * * 1-5'  # Weekdays at 8am
+  workflow_dispatch: {}
+
+env:
+  DOCS_JQL: "project=PROJ AND labels=docs-needed AND labels != docs-workflow-started"
 
 jobs:
-  docs-workflow:
+  check:
     runs-on: ubuntu-latest
+    outputs:
+      tickets: ${{ steps.check.outputs.tickets }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          python3 -m pip install PyGithub python-gitlab jira pyyaml ratelimit requests beautifulsoup4 html2text
+
+      - name: Check for ready tickets
+        id: check
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          JIRA_AUTH_TOKEN: ${{ secrets.JIRA_AUTH_TOKEN }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+        run: |
+          RESULT=$(claude -p "Skill: docs-tools:docs-workflow-jira-ready, args: \"--jql '${{ env.DOCS_JQL }}' --add-label\"")
+          echo "tickets=$(echo "$RESULT" | jq -c '.ready')" >> "$GITHUB_OUTPUT"
+
+  run-workflow:
+    needs: check
+    if: needs.check.outputs.tickets != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ticket: ${{ fromJson(needs.check.outputs.tickets) }}
+      max-parallel: 2
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
@@ -199,44 +229,47 @@ jobs:
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          WORKFLOW_FLAG=""
-          if [ "${{ inputs.workflow }}" != "default" ]; then
-            WORKFLOW_FLAG="--workflow ${{ inputs.workflow }}"
-          fi
-          claude -p "/docs-tools:docs-orchestrator ${{ inputs.ticket }} --draft ${WORKFLOW_FLAG}"
+          claude -p "Skill: docs-tools:docs-orchestrator, args: \"${{ matrix.ticket }} --draft\""
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: docs-output
+          name: docs-${{ matrix.ticket }}
           path: .claude/docs/
 ```
+
+This uses a matrix strategy to parallelize orchestrator runs across tickets. The `check` job queries JIRA and passes ready ticket IDs to `run-workflow` via `fromJson`.
 
 ### GitLab CI example
 
 ```yaml
-docs-workflow:
+docs-check-tickets:
   stage: docs
   image: node:20
-  variables:
-    TICKET: ""
-    WORKFLOW: "default"
   rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
     - when: manual
   before_script:
     - npm install -g @anthropic-ai/claude-code
     - apt-get update && apt-get install -y python3 python3-pip jq
-    - python3 -m pip install python-pptx PyGithub python-gitlab jira pyyaml ratelimit requests beautifulsoup4 html2text
+    - python3 -m pip install PyGithub python-gitlab jira pyyaml ratelimit requests beautifulsoup4 html2text
   script:
     - |
-      WORKFLOW_FLAG=""
-      if [ "$WORKFLOW" != "default" ]; then
-        WORKFLOW_FLAG="--workflow $WORKFLOW"
+      RESULT=$(claude -p "Skill: docs-tools:docs-workflow-jira-ready, args: \"--jql 'project=PROJ AND labels=docs-needed' --add-label\"")
+      TICKETS=$(echo "$RESULT" | jq -r '.ready[]' 2>/dev/null || true)
+      if [ -z "$TICKETS" ]; then
+        echo "No tickets ready for docs workflow."
+        exit 0
       fi
-      claude -p "/docs-tools:docs-orchestrator ${TICKET} --draft ${WORKFLOW_FLAG}"
+      for TICKET in $TICKETS; do
+        echo "=== Starting workflow for $TICKET ==="
+        claude -p "Skill: docs-tools:docs-orchestrator, args: \"$TICKET --draft\"" \
+          2>&1 | tee -a .work/cron-runs/$(date +%Y%m%d-%H%M%S)-${TICKET}.log
+      done
   artifacts:
     paths:
       - .claude/docs/
+      - .work/cron-runs/
     expire_in: 1 week
 ```
 
@@ -245,6 +278,7 @@ Set `ANTHROPIC_API_KEY`, `JIRA_AUTH_TOKEN`, `JIRA_EMAIL`, and any Git platform t
 ### Tips for CI usage
 
 - Use `--draft` to write output to `.claude/docs/` staging area instead of modifying repo files directly
+- Use `--add-label` in the JIRA ready check to prevent re-processing tickets on the next run
 - Use `--workflow` to select a CI-specific workflow variant (e.g., a lighter review-only pipeline)
 - Collect the `.claude/docs/` directory as an artifact for downstream review or PR creation
 - The orchestrator writes a progress JSON file, so failed runs can be resumed in a subsequent job if the artifact is restored
