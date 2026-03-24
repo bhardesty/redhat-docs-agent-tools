@@ -127,10 +127,19 @@ For each RelatedLinks warning:
 
 ## Step 5: Verify
 
-Invoke `dita-tools:dita-validate-asciidoc` again. The result MUST have no output before scoring.
+Re-run the same method used in Step 2. The result MUST be clean before scoring.
+
+### For repo-wide scope — direct Vale invocation
+
+```bash
+cd "$DOCS_REPO"
+find . -name '*.adoc' -not -type l | xargs vale
+```
+
+### For assembly or topic scope — dita-validate-asciidoc
 
 ```
-Skill: dita-tools:dita-validate-asciidoc, args: "$ASSEMBLY_OR_MASTER"
+Skill: dita-tools:dita-validate-asciidoc, args: "$ASSEMBLY_OR_TOPIC"
 ```
 
 If warnings remain, return to Step 3. Do not score until the output is clean.
