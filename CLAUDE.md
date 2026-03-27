@@ -74,7 +74,7 @@ Do NOT use old slash-command syntax (e.g., `/jira-reader --issue PROJ-123`).
 - Use kebab-case for plugin and command names
 - Each plugin must have a `.claude-plugin/plugin.json`
 - Bump version in plugin.json when making changes
-- When adding a new plugin or updating an existing plugin's name, description, or version, also update `.claude-plugin/marketplace.json` at the repo root to keep it in sync
+- When adding a new plugin or updating an existing plugin's name or description, also update `.claude-plugin/marketplace.json` at the repo root to keep it in sync
 - Auto-generated files (plugins.md, docs/plugins.md, docs/plugins/, docs/install/) are gitignored and built by CI only. Run `make update` locally to preview them
 - Use the hello-world plugin as a reference implementation
 - Use `.work/` directory for temporary files (gitignored)
@@ -153,4 +153,4 @@ All paths in plugin.json must be relative and start with `./`. Plugins cannot re
 
 For the marketplace schema (required fields, plugin entry format, source types), consult https://code.claude.com/docs/en/plugin-marketplaces.md
 
-Version management: use semver (`MAJOR.MINOR.PATCH`). If version is unchanged, users will not receive updates due to caching. Set version in either `plugin.json` or `marketplace.json`, not both (plugin.json wins silently).
+Version management: use semver (`MAJOR.MINOR.PATCH`) in `plugin.json` only — do not set version in `marketplace.json`. If version is unchanged, users will not receive updates due to caching.
