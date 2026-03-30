@@ -53,7 +53,7 @@ If access to JIRA or Git is needed for supplemental research and fails:
 
 5. **Apply JTBD framework** (from reference file):
    - Define job statements for each documentation need
-   - Map to JTBD hierarchy (Category → Top Job → User Stories)
+   - Map to JTBD hierarchy (Category → Main Job → User Stories)
    - Check for existing jobs before creating new parent topics
    - Plan Parent Topics for major jobs
    - Tag each planned module with its content journey phase
@@ -65,7 +65,7 @@ If access to JIRA or Git is needed for supplemental research and fails:
 
 7. **Plan modules and assemblies**:
    - Recommend module types (CONCEPT, PROCEDURE, REFERENCE)
-   - Organize into user story assemblies by Top Jobs
+   - Organize into user story assemblies by Main Jobs
    - Define reading order and shared prerequisites
    - Apply theme clustering when multiple related requirements exist
 
