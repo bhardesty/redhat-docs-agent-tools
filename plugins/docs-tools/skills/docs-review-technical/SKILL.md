@@ -28,6 +28,8 @@ For style guide compliance and modular docs review, use `docs-tools:docs-review-
 | `--threshold <0-100>` | Confidence threshold for reporting issues (default: 80) |
 | `--code <url>` | Code repository URL for technical validation (repeatable). Enables Agent 2. |
 | `--fix` | Auto-fix high-confidence issues (>=65%), then interactively walk through remaining |
+| `--jira <TICKET-123>` | Auto-discover code repos from JIRA ticket (uses `docs-tools:jira-reader`). Enables Agent 2. |
+| `--ref <branch>` | Git ref to check out in `--code` repos (default: default branch). Applies to preceding `--code`. |
 
 If no arguments are provided, display usage and ask the user to specify a mode.
 
@@ -131,36 +133,59 @@ For `--pr` mode, use `python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts
 
 Workflow:
 
-1. **Clone repos** to `/tmp/tech-review/<repo-name>/` using `git clone` (full history, not `--depth 1` — `git log` search needs history). Try specified ref, fall back to default branch.
+1. **Clone repos** to `/tmp/tech-review/<repo-name>/` using `git clone` (full history, not `--depth 1` — `git log` search needs history).
+
+   **Repository discovery priority**: `--code` (explicit) > PR URL linked repos > `--jira` ticket linked repos > `:code-repo-url:` AsciiDoc attributes.
+
+   If `--jira` is provided, fetch the ticket using `docs-tools:jira-reader` and extract linked PR/MR URLs and repository references. Parse repo URLs from PR links and JIRA ticket fields.
+
+   If `--ref` was specified for a repo, check out that ref after cloning: `git checkout <ref>`. Otherwise use the default branch.
 
 2. **Extract references** from doc files:
    ```bash
    python3 scripts/code_scanner.py extract $(cat /tmp/docs-review-doc-files.txt) --output /tmp/tech-review-refs.json
    ```
 
-3. **Search repos directly** — Read `/tmp/tech-review-refs.json` and search the cloned repos using native tools (Grep, Glob, Bash, Read). For each reference category:
+3. **Search repos for references** — Run the search subcommand to validate extracted references against cloned repos:
+   ```bash
+   python3 scripts/code_scanner.py search /tmp/tech-review-refs.json \
+     /tmp/tech-review/repo1 [/tmp/tech-review/repo2 ...] \
+     --output /tmp/tech-review-search.json
+   ```
 
-   - **Commands**: Skip external system commands (sudo, grep, git, oc, kubectl, docker, podman, curl, ssh, systemctl, ansible, make, etc.). For project-specific commands, use Grep to find the binary in the repo. Read the source to check flag names, default values, and subcommands match the docs.
-   - **Code blocks**: Use Grep to find the first meaningful line of each block in the repo. Read surrounding source to check values, function signatures, and import paths match.
-   - **APIs** (functions/classes/endpoints): Use Grep to find definitions. Read the source to verify signatures, parameters, and return types match the docs.
-   - **Configs**: Use Glob to find config files (*.yaml, *.yml, *.json, *.toml). Read them to compare key names, default values, and structure against what the docs show.
-   - **File paths**: Use Glob to check if the documented path exists. If not, search by basename to detect renames.
-   - **Git history**: When a reference is not found in code, use `git log --all --oneline --grep="<term>"` to check for renames, deprecations, or removals. This provides evidence for confidence scoring (e.g., "flag `--enable-feature` was renamed to `--feature-enable` in commit abc123").
+   The search output includes per-reference structured data:
+   - **Commands**: `scope` (external/in-scope/unknown), `cli_validation` (unknown_flags, valid_flags, known_flags, framework), `git_evidence`
+   - **Configs**: `schema_validation` (matched_schema, keys_only_in_doc, keys_only_in_schema, overlap_ratio), `git_evidence`
+   - **APIs**: `matches` (with type: definition/usage/endpoint), `git_evidence`
+   - **Code blocks**: `matches` (with type: first_line), `identifiers`
+   - **File paths**: `matches` (with type: exact/basename), `git_evidence`
+   - **Top-level**: `discovered_cli_definitions`, `discovered_schemas`
 
-   Focus on finding **concrete discrepancies**: wrong default values (e.g., "docs say pool_size=10, code says pool_size=5"), renamed flags, missing parameters, stale import paths, undocumented features. Do not report "not found in code" without evidence of a real problem.
+4. **Validate search results** — Read `/tmp/tech-review-search.json` and for each category, apply the structured triage pipeline from Step 6 (below). Use native tools (Grep, Glob, Read) only to verify ambiguous results — do not re-search everything the script already checked.
 
-4. Return issues in the standard format: `file`, `line`, `description`, `reason`, `confidence`, `severity`. Include the code evidence in `reason`.
+5. Return issues in the standard format: `file`, `line`, `description`, `reason`, `confidence`, `severity`. Include the code evidence in `reason`.
 
-## Step 6: Validate Agent 2 Findings
+## Step 6: Structured Triage (Deterministic Classification)
 
-Review each issue reported by Agent 2. For each finding:
+Process ALL search results from `/tmp/tech-review-search.json` through a deterministic classification pipeline — not just not-found items. A command can be `found: true` (binary exists) but still have stale flags (`cli_validation.unknown_flags`). Do NOT skip this step or use ad-hoc exploration.
 
-- Confirm the agent read the actual source file (not just grep output) and the discrepancy is real
-- Confirm the issue is not a test fixture, example, or deprecated path that is intentionally different
-- Assign confidence based on evidence quality: direct value mismatch = 90%+, renamed/moved = 70-85%, absent with no code evidence = skip
-- Assign severity: `High` = users will hit errors. `Medium` = misleading but not blocking. `Low` = cosmetic.
+**Pass 1: Scope filtering (commands only)** — For each command result, check the `scope` field. Non-command categories (code blocks, APIs, configs, file paths) do not have scope and always proceed to Pass 2.
+- `scope: external` → Tag as `out-of-scope`, skip further analysis. These are system commands (sudo, dnf, oc, kubectl, etc.) that cannot be validated against the code repo.
+- `scope: in-scope` or `scope: unknown` → Continue to Pass 2.
 
-Discard findings where the agent could not confirm the discrepancy by reading source code.
+**Pass 2: Deterministic validation** — For items that passed scope filtering:
+- **Commands with `cli_validation`**: If `cli_validation.unknown_flags` is non-empty, flag each unknown flag as an issue. The `cli_validation.known_flags` list shows what flags actually exist in the code. Confidence is high (>=80%) because this is source-code-derived ground truth.
+- **Configs with `schema_validation`**: If `schema_validation.keys_only_in_doc` is non-empty, flag each as a potential stale/renamed key. Use `keys_only_in_schema` as candidate replacements. Confidence is medium-high (70-85%) based on `overlap_ratio`.
+- **File paths with `found: false`**: If basename matches exist, likely a moved file. Confidence 70-80%. If no matches at all, confidence <50%.
+
+**Pass 3: Evidence-based analysis** — For remaining items not resolved by Pass 2:
+- Cross-reference `git_evidence` with search results. Git log mentions of renames or deprecation → medium-high confidence (70-90%).
+- Partial matches or similar-but-different results → medium confidence (50-64%).
+- No matches at all and no git evidence → low confidence (<50%). Could be wrong repo, or reference lives elsewhere.
+
+**Pass 4: Read source files** — For items flagged in passes 2-3 with confidence >=50%, read the actual source file referenced by the match to confirm the issue. Do not report issues based solely on search output without verifying against the source.
+
+**Assigning severity**: `High` = users will hit errors (broken commands, missing APIs). `Medium` = misleading but not blocking (wrong names, stale options). `Low` = cosmetic or informational (undocumented features, formatting).
 
 ### Signal quality filter
 
@@ -279,6 +304,27 @@ Evidence: Flag renamed in commit abc123
 
 Ask user via AskUserQuestion: **Apply** | **Modify** | **Skip** | **Delete section**
 
+**Fix-mode report** — When `--fix` is used, the report at `/tmp/docs-review-technical-report.md` includes additional sections:
+
+### Issues Auto-Fixed
+
+| ID | File:Line | Issue | Evidence | Before | After |
+|----|-----------|-------|----------|--------|-------|
+| AF-1 | file.adoc:23 | Flag renamed | cli_validation | `--enable-feature` | `--feature-enable` |
+
+### Issues Interactively Resolved
+
+| ID | File:Line | Issue | Action |
+|----|-----------|-------|--------|
+| IR-1 | file.adoc:45 | Stale config key | Applied suggested fix |
+| IR-2 | file.adoc:67 | Wrong default | Modified by user |
+
+### Issues Skipped
+
+| ID | File:Line | Issue | Confidence |
+|----|-----------|-------|------------|
+| SK-1 | file.adoc:91 | Config key not found | 55% |
+
 ---
 
 # Mode: --action-comments
@@ -345,6 +391,31 @@ Categorize comments: **Required** (technical errors — must fix), **Suggestion*
 **Source**: [Branch: <branch> vs <base> | PR/MR URL]
 **Date**: YYYY-MM-DD
 
+## Discovery Summary
+
+| Metric | Count |
+|--------|-------|
+| CLI definitions discovered | X |
+| Schema files discovered | Y |
+| Commands: in-scope | A |
+| Commands: external (out-of-scope) | B |
+| Commands: unknown scope | C |
+
+## Code Repositories
+
+| Repo | Ref | Clone Path | Source |
+|------|-----|------------|--------|
+| repo-name | main | /tmp/tech-review/repo-name | --code |
+
+## Triage Summary
+
+| Pass | Description | Items Processed | Issues Flagged |
+|------|-------------|-----------------|----------------|
+| Pass 1 | Scope filtering | X | Y |
+| Pass 2 | Deterministic validation | X | Y |
+| Pass 3 | Evidence-based analysis | X | Y |
+| Pass 4 | Source file verification | X | Y |
+
 ## Summary
 
 | Metric | Count |
@@ -367,8 +438,8 @@ Categorize comments: **Required** (technical errors — must fix), **Suggestion*
 
 #### Code Validation (if Agent 2 ran)
 
-| Line | Severity | Issue | Evidence |
-|------|----------|-------|----------|
+| Line | Severity | Issue | Evidence | Validation Source |
+|------|----------|-------|----------|-------------------|
 
 Show specific value mismatches (e.g., "Docs: pool_size=10, Code: pool_size=5"), undocumented features, and import path errors. Do not list every `found: false` result — only report items where there is concrete evidence of a discrepancy or where a documented feature is provably absent from the code.
 
@@ -376,11 +447,18 @@ Show specific value mismatches (e.g., "Docs: pool_size=10, Code: pool_size=5"), 
 
 ## Required Changes
 
-1. **file.adoc:23** — Description (evidence)
+1. **file.adoc:23** — Description (evidence) [validation: cli_validation]
 
 ## Suggestions
 
-1. **file.adoc:91** — Description
+1. **file.adoc:91** — Description [validation: manual_analysis]
+
+## Out-of-Scope References
+
+| Tool | Count |
+|------|-------|
+| sudo | X |
+| kubectl | Y |
 
 ---
 
