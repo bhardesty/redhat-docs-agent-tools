@@ -14,6 +14,8 @@ import argparse
 import json
 import logging
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 log = logging.getLogger("code_scanner")
@@ -26,6 +28,23 @@ SKIP_FUNCTIONS = frozenset(
     "if for while print return len map set get new int str list dict type "
     "var let const def end do nil true false else case break next puts echo "
     "test eval".split()
+)
+
+EXTERNAL_COMMANDS = frozenset(
+    "sudo grep egrep fgrep sed awk cat head tail less more wc sort uniq cut "
+    "tr tee xargs find ls cp mv rm mkdir rmdir chmod chown ln touch "
+    "echo printf read export source set unset "
+    "git svn hg "
+    "curl wget ssh scp rsync nc telnet "
+    "docker podman buildah skopeo "
+    "oc kubectl helm kustomize "
+    "dnf yum rpm apt dpkg pacman zypper brew pip pip3 gem npm yarn "
+    "systemctl journalctl service chkconfig "
+    "ansible ansible-playbook terraform "
+    "make cmake gcc g++ javac python python3 ruby node go rustc cargo "
+    "tar gzip gunzip zip unzip bzip2 xz "
+    "ps kill top htop df du free mount umount "
+    "cd pwd env which whereis file stat date cal man info".split()
 )
 
 # Regex patterns for AsciiDoc / Markdown parsing
@@ -300,6 +319,406 @@ class Extractor:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Search — validate extracted references against code repositories
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def classify_command_scope(cmd: str, repo_paths: list[str]) -> str:
+    """Classify a command as external, in-scope, or unknown."""
+    binary = cmd.split()[0].split("/")[-1]
+    if binary in EXTERNAL_COMMANDS:
+        return "external"
+    for rp in repo_paths:
+        repo = Path(rp)
+        for pattern in [f"**/{binary}", f"**/bin/{binary}", f"**/cmd/{binary}/**"]:
+            if list(repo.glob(pattern)):
+                return "in-scope"
+    return "unknown"
+
+
+def git_log_search(term: str, repo_path: str, max_results: int = 5) -> list[str]:
+    """Search git log for mentions of a term (renames, deprecations)."""
+    try:
+        result = subprocess.run(
+            ["git", "log", "--all", "--oneline", f"--grep={term}", f"-{max_results}"],
+            capture_output=True, text=True, cwd=repo_path, timeout=30,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip().splitlines()
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return []
+
+
+def find_files_matching(pattern: str, repo_paths: list[str]) -> list[str]:
+    """Find files matching a glob pattern across repos."""
+    matches = []
+    for rp in repo_paths:
+        matches.extend(str(p) for p in Path(rp).rglob(pattern) if p.is_file())
+    return matches
+
+
+def discover_cli_definitions(binary: str, repo_paths: list[str]) -> dict | None:
+    """Find argparse/click/cobra CLI definitions for a binary."""
+    patterns_by_framework = {
+        "argparse": r"add_argument\(['\"]--?([a-zA-Z0-9_-]+)",
+        "click": r"@click\.(?:option|argument)\(['\"]--?([a-zA-Z0-9_-]+)",
+        "cobra": r"Flags\(\)\.(?:String|Bool|Int|StringVar|BoolVar)\w*\(['\"]([a-zA-Z0-9_-]+)",
+    }
+    for rp in repo_paths:
+        repo = Path(rp)
+        candidates = []
+        for pat in [f"{binary}.py", f"{binary}/**/*.py",
+                    f"cmd/{binary}/*.go", "cli.py", "main.py",
+                    "cli/*.py", "__main__.py"]:
+            candidates.extend(repo.rglob(pat))
+
+        for cand in candidates[:10]:
+            try:
+                src = cand.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+            for framework, pattern in patterns_by_framework.items():
+                flags = re.findall(pattern, src)
+                if flags:
+                    return {
+                        "framework": framework,
+                        "file": str(cand),
+                        "known_flags": sorted(set(flags)),
+                    }
+    return None
+
+
+def discover_schemas(repo_paths: list[str]) -> list[dict]:
+    """Find schema/config files in repos."""
+    schemas = []
+    schema_patterns = [
+        "*.schema.json", "schema.json", "config.schema.*",
+        "*-schema.yaml", "*-schema.yml",
+        "values.yaml", "default.yaml", "defaults.yaml",
+        "config.yaml", "config.yml", "config.json",
+        "example.yaml", "example.yml", "example.json",
+    ]
+    for rp in repo_paths:
+        repo = Path(rp)
+        for pat in schema_patterns:
+            for match in repo.rglob(pat):
+                if match.is_file() and ".git" not in match.parts:
+                    try:
+                        content = match.read_text(encoding="utf-8", errors="replace")
+                        keys = []
+                        suffix = match.suffix.lower()
+                        if suffix in (".yaml", ".yml"):
+                            keys = re.findall(r"^\s*([a-zA-Z_][a-zA-Z0-9_-]*):", content, re.M)
+                        elif suffix == ".json":
+                            keys = re.findall(r'"([a-zA-Z_][a-zA-Z0-9_-]*)"\s*:', content)
+                        elif suffix == ".toml":
+                            keys = re.findall(r"^([a-zA-Z_][a-zA-Z0-9_-]*)\s*=", content, re.M)
+                        keys = list(dict.fromkeys(keys))
+                        if keys:
+                            schemas.append({
+                                "file": str(match),
+                                "format": suffix.lstrip("."),
+                                "keys": keys,
+                            })
+                    except Exception:
+                        continue
+    return schemas
+
+
+def search_commands(commands: list[dict], repo_paths: list[str]) -> tuple[list[dict], list[dict]]:
+    """Search repos for command references. Returns (results, discovered_cli_defs)."""
+    results = []
+    cli_cache = {}
+    discovered_cli_defs = []
+
+    for cmd_ref in commands:
+        cmd = cmd_ref.get("command", "")
+        parts = cmd.split()
+        if not parts:
+            continue
+
+        binary = parts[0].split("/")[-1]
+        scope = classify_command_scope(cmd, repo_paths)
+
+        result = {
+            **cmd_ref,
+            "found": False,
+            "scope": scope,
+            "cli_validation": None,
+            "git_evidence": [],
+        }
+
+        if scope == "external":
+            result["found"] = True
+            results.append(result)
+            continue
+
+        # Check if binary exists in repo
+        for rp in repo_paths:
+            matches = list(Path(rp).rglob(binary))
+            if matches:
+                result["found"] = True
+                break
+
+        # CLI flag validation
+        flags = [p for p in parts[1:] if p.startswith("-")]
+        if flags:
+            if binary not in cli_cache:
+                cli_cache[binary] = discover_cli_definitions(binary, repo_paths)
+            cli_def = cli_cache[binary]
+            if cli_def:
+                known = set(cli_def["known_flags"])
+                doc_flags = set(f.lstrip("-") for f in flags)
+                unknown = sorted(doc_flags - known)
+                valid = sorted(doc_flags & known)
+                result["cli_validation"] = {
+                    "unknown_flags": unknown,
+                    "valid_flags": valid,
+                    "known_flags": cli_def["known_flags"],
+                    "framework": cli_def["framework"],
+                    "definition_file": cli_def["file"],
+                }
+
+        # Git evidence for not-found or unknown scope
+        if not result["found"] or scope == "unknown":
+            for rp in repo_paths:
+                evidence = git_log_search(binary, rp)
+                if evidence:
+                    result["git_evidence"].extend(evidence)
+
+        results.append(result)
+
+    # Collect unique CLI definitions discovered
+    for cli_def in cli_cache.values():
+        if cli_def:
+            discovered_cli_defs.append(cli_def)
+
+    return results, discovered_cli_defs
+
+
+def search_code_blocks(code_blocks: list[dict], repo_paths: list[str]) -> list[dict]:
+    """Search repos for code block content matches."""
+    results = []
+    for block in code_blocks:
+        content = block.get("content", "")
+        lines = [l.strip() for l in content.splitlines() if l.strip() and not l.strip().startswith("#")]
+        if not lines:
+            results.append({**block, "found": False, "matches": []})
+            continue
+
+        first_line = lines[0]
+        if first_line.startswith(("$ ", "# ")):
+            first_line = first_line[2:]
+
+        matches = []
+        for rp in repo_paths:
+            try:
+                result = subprocess.run(
+                    ["grep", "-rl", "--include=*.py", "--include=*.go", "--include=*.java",
+                     "--include=*.rb", "--include=*.js", "--include=*.ts",
+                     "--include=*.yaml", "--include=*.yml", "--include=*.json",
+                     "-F", first_line[:80], rp],
+                    capture_output=True, text=True, timeout=30,
+                )
+                if result.stdout.strip():
+                    for f in result.stdout.strip().splitlines()[:5]:
+                        matches.append({"file": f, "type": "first_line"})
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass
+
+        identifiers = set()
+        for l in lines:
+            identifiers.update(re.findall(r"\b([a-zA-Z_][a-zA-Z0-9_]{2,})\b", l))
+        identifiers -= SKIP_FUNCTIONS
+
+        results.append({
+            **block,
+            "found": len(matches) > 0,
+            "matches": matches,
+            "identifiers": sorted(identifiers)[:20],
+        })
+
+    return results
+
+
+def search_apis(apis: list[dict], repo_paths: list[str]) -> list[dict]:
+    """Search repos for API/function/class/endpoint references."""
+    results = []
+    for api_ref in apis:
+        name = api_ref.get("name", "")
+        api_type = api_ref.get("type", "function")
+        matches = []
+
+        for rp in repo_paths:
+            if api_type == "class":
+                patterns = [f"class {name}", f"type {name} struct"]
+            elif api_type == "endpoint":
+                patterns = [name]
+            else:
+                patterns = [f"def {name}", f"func {name}", f"function {name}",
+                           f"fn {name}", f"void {name}"]
+
+            for pattern in patterns:
+                try:
+                    result = subprocess.run(
+                        ["grep", "-rn", "--include=*.py", "--include=*.go",
+                         "--include=*.java", "--include=*.rb", "--include=*.js",
+                         "--include=*.ts", "--include=*.rs",
+                         "-F" if api_type == "endpoint" else "-E",
+                         pattern, rp],
+                        capture_output=True, text=True, timeout=30,
+                    )
+                    if result.stdout.strip():
+                        for line in result.stdout.strip().splitlines()[:3]:
+                            if api_type == "endpoint":
+                                match_type = "endpoint"
+                            elif any(kw in pattern for kw in ["def ", "func ", "class ", "type "]):
+                                match_type = "definition"
+                            else:
+                                match_type = "usage"
+                            matches.append({"match": line.strip(), "type": match_type})
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    pass
+
+        git_evidence = []
+        if not matches:
+            for rp in repo_paths:
+                git_evidence.extend(git_log_search(name, rp))
+
+        results.append({
+            **api_ref,
+            "found": len(matches) > 0,
+            "matches": matches[:5],
+            "git_evidence": git_evidence,
+        })
+
+    return results
+
+
+def search_configs(configs: list[dict], repo_paths: list[str]) -> tuple[list[dict], list[dict]]:
+    """Search repos for configuration key references. Returns (results, discovered_schemas)."""
+    schemas = discover_schemas(repo_paths)
+    results = []
+
+    for cfg_ref in configs:
+        doc_keys = set(cfg_ref.get("keys", []))
+        result = {
+            **cfg_ref,
+            "found": False,
+            "schema_validation": None,
+            "git_evidence": [],
+        }
+
+        best_match = None
+        best_overlap = 0.0
+        for schema in schemas:
+            schema_keys = set(schema["keys"])
+            overlap = len(doc_keys & schema_keys)
+            if overlap > 0:
+                ratio = overlap / max(len(doc_keys), 1)
+                if ratio > best_overlap:
+                    best_overlap = ratio
+                    best_match = schema
+
+        if best_match:
+            result["found"] = True
+            schema_keys = set(best_match["keys"])
+            result["schema_validation"] = {
+                "matched_schema": best_match["file"],
+                "keys_only_in_doc": sorted(doc_keys - schema_keys),
+                "keys_only_in_schema": sorted(schema_keys - doc_keys)[:20],
+                "overlap_ratio": round(best_overlap, 2),
+            }
+
+        if not result["found"]:
+            for key in list(doc_keys)[:5]:
+                for rp in repo_paths:
+                    evidence = git_log_search(key, rp, max_results=3)
+                    if evidence:
+                        result["git_evidence"].extend(evidence)
+
+        results.append(result)
+
+    return results, schemas
+
+
+def search_file_paths(file_paths: list[dict], repo_paths: list[str]) -> list[dict]:
+    """Search repos for referenced file paths."""
+    results = []
+    for fp_ref in file_paths:
+        ref_path = fp_ref.get("path", "")
+        matches = []
+        basename = Path(ref_path).name
+
+        for rp in repo_paths:
+            repo = Path(rp)
+            exact = repo / ref_path
+            if exact.exists():
+                matches.append({"file": str(exact), "type": "exact"})
+                continue
+            for m in repo.rglob(basename):
+                if m.is_file() and ".git" not in m.parts:
+                    matches.append({"file": str(m), "type": "basename"})
+
+        git_evidence = []
+        if not matches:
+            for rp in repo_paths:
+                git_evidence.extend(git_log_search(basename, rp, max_results=3))
+
+        results.append({
+            **fp_ref,
+            "found": len(matches) > 0,
+            "matches": matches[:5],
+            "git_evidence": git_evidence,
+        })
+
+    return results
+
+
+def cmd_search(args):
+    """Search code repositories for extracted references."""
+    refs_path = Path(args.refs_json)
+    if not refs_path.exists():
+        print(f"ERROR: refs file not found: {args.refs_json}", file=sys.stderr)
+        sys.exit(1)
+
+    refs_data = json.loads(refs_path.read_text(encoding="utf-8"))
+    refs = refs_data.get("references", refs_data)
+    repo_paths = args.repos
+
+    for rp in repo_paths:
+        if not Path(rp).is_dir():
+            log.warning("Repo path not found: %s", rp)
+
+    cmd_results, discovered_cli_defs = search_commands(refs.get("commands", []), repo_paths)
+    cfg_results, discovered_schemas = search_configs(refs.get("configs", []), repo_paths)
+
+    results = {
+        "repos": repo_paths,
+        "discovered_cli_definitions": discovered_cli_defs,
+        "discovered_schemas": [{"file": s["file"], "format": s["format"], "key_count": len(s["keys"])} for s in discovered_schemas],
+        "results": {
+            "commands": cmd_results,
+            "code_blocks": search_code_blocks(refs.get("code_blocks", []), repo_paths),
+            "apis": search_apis(refs.get("apis", []), repo_paths),
+            "configs": cfg_results,
+            "file_paths": search_file_paths(refs.get("file_paths", []), repo_paths),
+        },
+    }
+
+    text = json.dumps(results, indent=2)
+    if args.output:
+        Path(args.output).write_text(text, encoding="utf-8")
+        print(f"Search results written to {args.output}")
+        for cat, items in results["results"].items():
+            found_count = sum(1 for i in items if i.get("found"))
+            print(f"  {cat}: {len(items)} checked, {found_count} found")
+    else:
+        print(text)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # CLI
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -333,6 +752,12 @@ def main():
     p_ext.add_argument("files", nargs="+", help="AsciiDoc/Markdown files or directories")
     p_ext.add_argument("-o", "--output", help="Write JSON to file instead of stdout")
 
+    # search
+    p_search = sub.add_parser("search", help="Search code repos for extracted references")
+    p_search.add_argument("refs_json", help="Path to extracted refs JSON (from extract)")
+    p_search.add_argument("repos", nargs="+", help="Paths to cloned code repositories")
+    p_search.add_argument("-o", "--output", help="Write JSON to file instead of stdout")
+
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -342,6 +767,8 @@ def main():
 
     if args.command == "extract":
         cmd_extract(args)
+    elif args.command == "search":
+        cmd_search(args)
 
 
 if __name__ == "__main__":
