@@ -99,10 +99,17 @@ CONFIG_ACCESS_PATTERNS = {
 }
 
 DATA_MODEL_PATTERNS = {
-    "sqlalchemy": {"pattern": re.compile(r"""class\s+(\w+)\(.*(?:Base|Model)\)"""), "globs": ["**/*.py"]},
+    "sqlalchemy": {"pattern": re.compile(r"""class\s+(\w+)\(\s*(?:db\.Model|Base)\s*\)"""), "globs": ["**/*.py"]},
     "django": {"pattern": re.compile(r"""class\s+(\w+)\(models\.Model\)"""), "globs": ["**/*.py"]},
     "go_struct": {"pattern": re.compile(r"""type\s+(\w+)\s+struct\s*\{"""), "globs": ["**/*.go"]},
 }
+
+# Directories to skip during discovery scans
+_SKIP_DIRS = frozenset({
+    ".git", ".venv", "venv", "env", "node_modules", "vendor", "__pycache__",
+    ".tox", ".mypy_cache", ".pytest_cache", ".eggs", "site-packages",
+    "dist", "build", ".bundle",
+})
 
 # Regex patterns for AsciiDoc / Markdown parsing
 RE_SOURCE_BLOCK = re.compile(r"^\[source(?:,\s*([a-z0-9+\-_]+))?(?:,\s*(.+))?\]\s*$", re.I)
@@ -805,9 +812,10 @@ def detect_languages(repo_paths: list[str]) -> list[str]:
                        ".ts": "typescript", ".rs": "rust", ".rb": "ruby", ".java": "java"}
         for ext, lang in ext_to_lang.items():
             if lang not in found:
-                for _ in repo.rglob(f"*{ext}"):
-                    found.add(lang)
-                    break
+                for fpath in repo.rglob(f"*{ext}"):
+                    if not (_SKIP_DIRS & set(fpath.parts)):
+                        found.add(lang)
+                        break
     return sorted(found)
 
 
@@ -820,7 +828,7 @@ def discover_env_vars(repo_paths: list[str]) -> list[dict]:
         for lang, pattern in ENV_VAR_PATTERNS.items():
             for ext in ENV_VAR_FILE_EXTENSIONS.get(lang, []):
                 for fpath in repo.rglob(ext):
-                    if ".git" in fpath.parts:
+                    if _SKIP_DIRS & set(fpath.parts):
                         continue
                     try:
                         content = fpath.read_text(encoding="utf-8", errors="replace")
@@ -856,7 +864,7 @@ def discover_all_cli_args(repo_paths: list[str]) -> list[dict]:
             pattern = spec["pattern"]
             for glob_pat in spec["globs"]:
                 for fpath in repo.rglob(glob_pat):
-                    if ".git" in fpath.parts:
+                    if _SKIP_DIRS & set(fpath.parts):
                         continue
                     try:
                         src = fpath.read_text(encoding="utf-8", errors="replace")
@@ -902,7 +910,7 @@ def discover_config_keys(repo_paths: list[str]) -> list[dict]:
             pattern = spec["pattern"]
             for glob_pat in spec["globs"]:
                 for fpath in repo.rglob(glob_pat):
-                    if ".git" in fpath.parts:
+                    if _SKIP_DIRS & set(fpath.parts):
                         continue
                     try:
                         src = fpath.read_text(encoding="utf-8", errors="replace")
@@ -932,7 +940,7 @@ def discover_api_endpoints(repo_paths: list[str]) -> list[dict]:
             pattern = spec["pattern"]
             for glob_pat in spec["globs"]:
                 for fpath in repo.rglob(glob_pat):
-                    if ".git" in fpath.parts:
+                    if _SKIP_DIRS & set(fpath.parts):
                         continue
                     try:
                         content = fpath.read_text(encoding="utf-8", errors="replace")
@@ -977,7 +985,7 @@ def discover_data_models(repo_paths: list[str]) -> list[dict]:
             pattern = spec["pattern"]
             for glob_pat in spec["globs"]:
                 for fpath in repo.rglob(glob_pat):
-                    if ".git" in fpath.parts:
+                    if _SKIP_DIRS & set(fpath.parts):
                         continue
                     try:
                         src = fpath.read_text(encoding="utf-8", errors="replace")
