@@ -9,6 +9,14 @@
       ]
     },
     {
+      "package": "code-finder",
+      "import_name": "code-finder",
+      "found_in": [
+        "plugins/docs-tools/skills/code-evidence/SKILL.md",
+        "plugins/docs-tools/skills/docs-workflow-code-evidence/SKILL.md"
+      ]
+    },
+    {
       "package": "html2text",
       "import_name": "html2text",
       "found_in": [

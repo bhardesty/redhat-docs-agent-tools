@@ -3,6 +3,9 @@ name: code-evidence
 description: Search a code repository for evidence matching a natural language query. Uses AST chunking and hybrid search (BM25 + vector) to find relevant functions, classes, methods, configuration, and documentation. Returns ranked code snippets with file paths, signatures, and relevance scores.
 argument-hint: --repo <path> --query "<search query>" [--filter-paths <dirs>] [--limit N] [--reindex]
 allowed-tools: Read, Bash
+dependencies:
+  python:
+    - code-finder
 ---
 
 # Code Evidence Retrieval
@@ -13,7 +16,7 @@ Uses hybrid search: BM25 for exact keyword matches + vector embeddings for seman
 
 ## Prerequisites
 
-- **code-finder** must be pip-installed: `pip install code-finder`
+- **code-finder** must be pip-installed: `python3 -m pip install code-finder`
 
 ## Arguments
 
