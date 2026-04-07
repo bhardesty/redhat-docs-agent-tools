@@ -62,7 +62,7 @@ def parse_diff_linewise(diff_text: str, context: int = 0) -> Dict[str, Union[str
                 elif changed_lines:
                     result[current_file] = _lines_to_ranges(changed_lines, context)
 
-            match = re.search(r"b/(.+)$", line)
+            match = re.search(r" b/(.+)$", line)
             current_file = match.group(1) if match else None
             is_new_file = False
             changed_lines = []
