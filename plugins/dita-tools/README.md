@@ -104,6 +104,15 @@ This renders both versions to plain text, generates a diff, and writes a review 
 
 For large assemblies with many modules, you can use Ralph Loop to iterate the rewrite pipeline until all Vale issues are resolved. Ralph Loop re-runs the command automatically, checking progress after each iteration and stopping when the completion promise is met or the iteration limit is reached.
 
+!!! tip
+    Open a terminal and install the Ralph Loop Claude plugin:
+
+    ```bash
+    claude plugin install ralph-loop@claude-plugins-official
+    ```
+
+Then open Claude and start a DITA rework loop:
+
 ```
 /ralph-loop:ralph-loop "Run /dita-tools:dita-rewrite on guides/master.adoc including all referenced modules. Fix all Vale AsciiDocDITA rule violations" --completion-promise "0 errors, 0 warnings" --max-iterations 20
 ```
