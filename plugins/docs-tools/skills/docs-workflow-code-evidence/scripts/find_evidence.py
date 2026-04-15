@@ -93,7 +93,9 @@ def main():
         from claude_context.skills.evidence_retrieval import retrieve_evidence
     except ImportError:
         print(
-            "Error: code-finder is not installed. Run: python3 -m pip install code-finder",
+            "Error: code-finder is not installed. Run this script via:\n"
+            "  uv run --with code-finder python3 find_evidence.py ...\n"
+            "Or install code-finder directly: python3 -m pip install code-finder",
             file=sys.stderr,
         )
         sys.exit(1)

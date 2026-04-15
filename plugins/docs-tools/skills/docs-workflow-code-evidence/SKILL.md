@@ -1,6 +1,6 @@
 ---
 name: docs-workflow-code-evidence
-description: Retrieve code evidence from a source repository to ground documentation in actual implementation. Indexes using AST chunking and hybrid search, then retrieves relevant code snippets for each topic in the documentation plan. Uses two-pass retrieval — source-scoped for API accuracy, unfiltered for README/narrative context. Supports glob-based scope filtering for whole-repo or subdirectory-scoped documentation. Repo must be available (cloned by orchestrator or provided via --repo). Requires code-finder to be pip-installed.
+description: Retrieve code evidence from a source repository to ground documentation in actual implementation. Indexes using AST chunking and hybrid search, then retrieves relevant code snippets for each topic in the documentation plan. Uses two-pass retrieval — source-scoped for API accuracy, unfiltered for README/narrative context. Supports glob-based scope filtering for whole-repo or subdirectory-scoped documentation. Repo must be available (cloned by orchestrator or provided via --repo). Requires uv for automatic code-finder dependency management.
 argument-hint: <ticket> --base-path <path> --repo <path> [--scope-include <globs>] [--scope-exclude <globs>] [--reindex] [--limit N]
 allowed-tools: Read, Write, Glob, Grep, Bash
 dependencies:
@@ -18,7 +18,8 @@ The writer typically works from the **documentation repository**, not the code r
 
 ## Prerequisites
 
-- **code-finder** must be pip-installed: `python3 -m pip install code-finder`
+- **uv** must be installed: `brew install uv` (macOS) or see https://docs.astral.sh/uv/getting-started/installation/
+- **code-finder** is installed automatically at runtime via `uv run --with code-finder`. No manual pip install required.
 - The wrapper script `scripts/find_evidence.py` calls the code-finder Python API directly (no CLI entry point required)
 
 ## Arguments
@@ -129,7 +130,7 @@ For each search query derived from the plan, add **two entries**:
 #### 5b. Run batch retrieval
 
 ```bash
-python3 scripts/find_evidence.py \
+uv run --with code-finder python3 scripts/find_evidence.py \
   --repo "$REPO_PATH" \
   --queries-file "${OUTPUT_DIR}/queries.json" \
   --limit <LIMIT>
