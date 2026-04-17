@@ -29,10 +29,12 @@ FIXTURE_FILES = [
 
 
 def _has_pandoc() -> bool:
+    """Return True if pandoc is available on PATH."""
     return shutil.which("pandoc") is not None
 
 
 def _has_asciidoctor() -> bool:
+    """Return True if asciidoctor is available on PATH."""
     return shutil.which("asciidoctor") is not None
 
 
@@ -130,6 +132,7 @@ class TestFullPipelineValidation:
     @requires_asciidoctor
     @pytest.mark.parametrize("fixture", FIXTURE_FILES)
     def test_full_pipeline_produces_valid_asciidoc(self, fixture, tmp_path):
+        """Each fixture converts without asciidoctor errors."""
         adoc_path = convert_fixture(fixture, tmp_path)
         content = adoc_path.read_text(encoding="utf-8")
         assert len(content.strip()) > 0, "Converted file should not be empty"
@@ -140,6 +143,7 @@ class TestFullPipelineValidation:
     @requires_pandoc
     @requires_asciidoctor
     def test_empty_file_produces_valid_asciidoc(self, tmp_path):
+        """An empty Markdown file converts to valid (empty) AsciiDoc."""
         md_path = tmp_path / "empty.md"
         md_path.write_text("", encoding="utf-8")
         process_file(str(md_path), base_path=tmp_path)
@@ -150,8 +154,11 @@ class TestFullPipelineValidation:
 
 
 class TestFrontmatter:
+    """Verify YAML frontmatter converts to AsciiDoc title and abstract."""
+
     @requires_pandoc
     def test_frontmatter_converts_to_title(self, tmp_path):
+        """Title and description from frontmatter appear as AsciiDoc equivalents."""
         adoc_path = convert_fixture("simple_frontmatter.md", tmp_path)
         content = adoc_path.read_text(encoding="utf-8")
         assert "Getting Started with RHIVOS" in content
@@ -161,8 +168,11 @@ class TestFrontmatter:
 
 
 class TestAdmonitions:
+    """Verify MkDocs admonition syntax converts to AsciiDoc admonition blocks."""
+
     @requires_pandoc
     def test_admonitions_convert_to_blocks(self, tmp_path):
+        """All admonition types convert and no MkDocs markers remain."""
         adoc_path = convert_fixture("admonitions_and_snippets.md", tmp_path)
         content = adoc_path.read_text(encoding="utf-8")
         assert "[IMPORTANT]" in content
@@ -174,8 +184,11 @@ class TestAdmonitions:
 
 
 class TestFiguresAndTabs:
+    """Verify figure captions, tabbed content, and code block titles convert."""
+
     @requires_pandoc
     def test_figures_get_captions(self, tmp_path):
+        """Figure captions appear as AsciiDoc titles before image macros."""
         adoc_path = convert_fixture("figure_and_tabs.md", tmp_path)
         content = adoc_path.read_text(encoding="utf-8")
         assert "/// figure-caption" not in content
@@ -183,6 +196,7 @@ class TestFiguresAndTabs:
 
     @requires_pandoc
     def test_tabs_convert_to_labeled_sections(self, tmp_path):
+        """Tab titles appear as AsciiDoc block titles with no MkDocs tab syntax."""
         adoc_path = convert_fixture("figure_and_tabs.md", tmp_path)
         content = adoc_path.read_text(encoding="utf-8")
         assert ".x86_64" in content
@@ -191,6 +205,7 @@ class TestFiguresAndTabs:
 
     @requires_pandoc
     def test_code_block_titles_convert(self, tmp_path):
+        """Titled code blocks produce AsciiDoc source blocks with .Title."""
         adoc_path = convert_fixture("figure_and_tabs.md", tmp_path)
         content = adoc_path.read_text(encoding="utf-8")
         assert "----" in content
@@ -199,8 +214,11 @@ class TestFiguresAndTabs:
 
 
 class TestLinks:
+    """Verify relative Markdown links convert to AsciiDoc xrefs."""
+
     @requires_pandoc
     def test_links_convert_to_xrefs(self, tmp_path):
+        """Relative .md links become .adoc references."""
         adoc_path = convert_fixture("simple_frontmatter.md", tmp_path)
         content = adoc_path.read_text(encoding="utf-8")
         assert ".adoc" in content
@@ -212,6 +230,7 @@ class TestCodeSnippetInlining:
 
     @requires_pandoc
     def test_code_snippet_inlined_not_included(self, tmp_path):
+        """Code file content appears inline with no include:: for code paths."""
         adoc_path = convert_fixture("admonitions_and_snippets.md", tmp_path)
         content = adoc_path.read_text(encoding="utf-8")
         assert "CONFIG_MARKER_A1B2" in content
@@ -221,6 +240,7 @@ class TestCodeSnippetInlining:
 
     @requires_pandoc
     def test_code_snippet_has_source_block(self, tmp_path):
+        """Inlined content is wrapped in [source,lang] with ---- delimiters."""
         adoc_path = convert_fixture("admonitions_and_snippets.md", tmp_path)
         content = adoc_path.read_text(encoding="utf-8")
         assert "[source,yaml]" in content
@@ -230,6 +250,7 @@ class TestCodeSnippetInlining:
 
     @requires_pandoc
     def test_line_range_extraction(self, tmp_path):
+        """Line-range syntax extracts only the specified lines."""
         adoc_path = convert_fixture("admonitions_and_snippets.md", tmp_path)
         content = adoc_path.read_text(encoding="utf-8")
         assert "RANGE_START_MARKER" in content
@@ -240,6 +261,7 @@ class TestCodeSnippetInlining:
 
     @requires_pandoc
     def test_prose_snippet_remains_as_include(self, tmp_path):
+        """Prose .md snippets produce include:: directives, not inlined content."""
         adoc_path = convert_fixture("admonitions_and_snippets.md", tmp_path)
         content = adoc_path.read_text(encoding="utf-8")
         assert "include::prose_snippets/disclaimer.adoc[]" in content
@@ -247,6 +269,7 @@ class TestCodeSnippetInlining:
 
     @requires_pandoc
     def test_snippet_path_extension_converted(self, tmp_path):
+        """Prose snippet include paths use .adoc extension, not .md."""
         adoc_path = convert_fixture("admonitions_and_snippets.md", tmp_path)
         content = adoc_path.read_text(encoding="utf-8")
         assert "disclaimer.adoc" in content
@@ -259,6 +282,7 @@ class TestSnippetContentVerification:
     @requires_pandoc
     @requires_asciidoctor
     def test_prose_include_resolves_in_asciidoctor(self, tmp_path):
+        """Asciidoctor resolves the prose include without errors."""
         adoc_path = convert_fixture("admonitions_and_snippets.md", tmp_path)
         issues = asciidoctor_validate(adoc_path)
         include_issues = [i for i in issues if "disclaimer" in i.lower()]
@@ -267,6 +291,7 @@ class TestSnippetContentVerification:
     @requires_pandoc
     @requires_asciidoctor
     def test_prose_content_appears_in_rendered_output(self, tmp_path):
+        """Rendered HTML contains the prose snippet marker text."""
         adoc_path = convert_fixture("admonitions_and_snippets.md", tmp_path)
         html_path = tmp_path / "output.html"
         html = asciidoctor_render(adoc_path, html_path)
@@ -275,6 +300,7 @@ class TestSnippetContentVerification:
     @requires_pandoc
     @requires_asciidoctor
     def test_code_content_appears_in_rendered_output(self, tmp_path):
+        """Rendered HTML contains all code snippet markers."""
         adoc_path = convert_fixture("admonitions_and_snippets.md", tmp_path)
         html_path = tmp_path / "output.html"
         html = asciidoctor_render(adoc_path, html_path)
@@ -284,8 +310,11 @@ class TestSnippetContentVerification:
 
 
 class TestMissingSnippetFallback:
+    """Verify graceful handling of missing or unresolvable snippet sources."""
+
     @requires_pandoc
     def test_missing_snippet_produces_warning_comment(self, tmp_path):
+        """A missing code file produces a WARNING comment and include:: fallback."""
         md_content = '# Test\n\n--8<-- "nonexistent/file.yml"\n'
         md_path = tmp_path / "missing_snippet.md"
         md_path.write_text(md_content, encoding="utf-8")
@@ -296,6 +325,7 @@ class TestMissingSnippetFallback:
 
     @requires_pandoc
     def test_no_base_path_falls_back_to_include(self, tmp_path):
+        """Without base_path, code snippets produce include:: (backward compatible)."""
         md_content = '# Test\n\n--8<-- "code_snippets/sample_config.yml"\n'
         md_path = tmp_path / "no_base.md"
         md_path.write_text(md_content, encoding="utf-8")
@@ -306,8 +336,11 @@ class TestMissingSnippetFallback:
 
 
 class TestNoMkDocsSyntaxRemains:
+    """Catch-all: no MkDocs or intermediate syntax survives the full pipeline."""
+
     @requires_pandoc
     def test_no_mkdocs_syntax_remains(self, tmp_path):
+        """The full_complexity fixture has zero residual MkDocs markers."""
         adoc_path = convert_fixture("full_complexity.md", tmp_path)
         content = adoc_path.read_text(encoding="utf-8")
         assert "!!!" not in content
@@ -317,3 +350,4 @@ class TestNoMkDocsSyntaxRemains:
         assert "/// figure-caption" not in content
         assert re.search(r'```\w+\s+title=', content) is None
         assert re.search(r'\]\([^)]+\.md\)', content) is None
+        assert "```{=asciidoc}" not in content

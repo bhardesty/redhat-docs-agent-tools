@@ -42,6 +42,11 @@ def _raw_block(asciidoc_lines: list[str]) -> list[str]:
     return [RAW_OPEN] + asciidoc_lines + ["", RAW_CLOSE]
 
 
+def _unwrap_raw_blocks(lines: list[str]) -> list[str]:
+    """Strip raw block open/close markers, keeping the AsciiDoc content within."""
+    return [line for line in lines if line != RAW_OPEN and line != RAW_CLOSE]
+
+
 def convert_admonitions(lines: list[str]) -> list[str]:
     """Convert MkDocs admonitions to AsciiDoc admonition blocks.
 
@@ -79,21 +84,24 @@ def convert_admonitions(lines: list[str]) -> list[str]:
             title = match.group(3)
             asciidoc_type = admonition_map.get(admon_type, "NOTE")
 
-            block = [f"[{asciidoc_type}]"]
-            if title:
-                block.append(f".{title}")
-            block.append("====")
-
+            inner = []
             i += 1
             while i < len(lines) and (
                 lines[i].startswith("    ") or lines[i].strip() == ""
             ):
                 if lines[i].strip() == "":
-                    block.append("")
+                    inner.append("")
                 else:
-                    block.append(lines[i][4:])
+                    inner.append(lines[i][4:])
                 i += 1
 
+            inner = _unwrap_raw_blocks(inner)
+
+            block = [f"[{asciidoc_type}]"]
+            if title:
+                block.append(f".{title}")
+            block.append("====")
+            block.extend(inner)
             block.append("====")
             result.extend(_raw_block(block))
             result.append("")
@@ -123,18 +131,22 @@ def convert_tabbed_content(lines: list[str]) -> list[str]:
         match = re.match(r'^===\s+"([^"]+)"\s*$', lines[i])
         if match:
             title = match.group(1)
-            block = [f".{title}", "--"]
+            inner = []
 
             i += 1
             while i < len(lines) and (
                 lines[i].startswith("    ") or lines[i].strip() == ""
             ):
                 if lines[i].strip() == "":
-                    block.append("")
+                    inner.append("")
                 else:
-                    block.append(lines[i][4:])
+                    inner.append(lines[i][4:])
                 i += 1
 
+            inner = _unwrap_raw_blocks(inner)
+
+            block = [f".{title}", "--"]
+            block.extend(inner)
             block.append("--")
             result.extend(_raw_block(block))
             result.append("")
@@ -158,13 +170,31 @@ def _lang_for_extension(suffix: str) -> str | None:
     return EXTENSION_LANGUAGE_MAP.get(suffix)
 
 
+def _emit_snippet(result: list[str], block: list[str], indent: str) -> None:
+    """Append snippet AsciiDoc to result, indented or raw-block-wrapped.
+
+    Indented snippets (inside admonitions/tabs) preserve their indent so the
+    container's content collector still recognizes them. Container transforms
+    strip raw block markers later via _unwrap_raw_blocks. Standalone snippets
+    are wrapped in raw blocks for pandoc pass-through.
+    """
+    if indent:
+        for line in block:
+            result.append(indent + line if line else "")
+    else:
+        result.extend(_raw_block(block))
+
+
 def convert_snippets(lines: list[str], base_path: Path | None = None) -> list[str]:
     """Convert MkDocs snippet inclusions.
 
     Prose .md files become include:: directives (extension swapped to .adoc).
     Code files are inlined as AsciiDoc source blocks when base_path is set
     and the source file exists. Supports line-range syntax ("file:start:end").
-    All AsciiDoc output is wrapped in raw blocks for pandoc pass-through.
+
+    Standalone snippets are wrapped in raw blocks for pandoc pass-through.
+    Indented snippets (inside containers) preserve their indent so that
+    admonition/tab collectors can still gather them.
     """
     snippet_re = re.compile(r'^(?P<indent>\s*)--8<--\s+"(?P<ref>[^"]+)"\s*$')
     range_re = re.compile(r"^(?P<path>.+):(?P<start>\d+):(?P<end>\d+)$")
@@ -176,6 +206,7 @@ def convert_snippets(lines: list[str], base_path: Path | None = None) -> list[st
             result.append(line)
             continue
 
+        indent = match.group("indent")
         ref = match.group("ref")
 
         range_match = range_re.match(ref)
@@ -192,19 +223,27 @@ def convert_snippets(lines: list[str], base_path: Path | None = None) -> list[st
 
         if suffix == ".md":
             adoc_path = file_ref[:-3] + ".adoc"
-            result.extend(_raw_block([f"include::{adoc_path}[]"]))
+            _emit_snippet(result, [f"include::{adoc_path}[]"], indent)
             continue
 
         if base_path is None:
-            result.extend(_raw_block([f"include::{file_ref}[]"]))
+            _emit_snippet(result, [f"include::{file_ref}[]"], indent)
             continue
 
-        resolved = base_path / file_ref
+        base_root = base_path.resolve()
+        resolved = (base_path / file_ref).resolve()
+        if not resolved.is_relative_to(base_root):
+            _emit_snippet(result, [
+                f"// WARNING: snippet path escapes base path: {file_ref}",
+                f"include::{file_ref}[]",
+            ], indent)
+            continue
+
         if not resolved.is_file():
-            result.extend(_raw_block([
+            _emit_snippet(result, [
                 f"// WARNING: snippet source not found: {file_ref}",
                 f"include::{file_ref}[]",
-            ]))
+            ], indent)
             continue
 
         content_lines = _read_snippet_lines(resolved, start, end)
@@ -217,7 +256,7 @@ def convert_snippets(lines: list[str], base_path: Path | None = None) -> list[st
         block.append("----")
         block.extend(content_lines)
         block.append("----")
-        result.extend(_raw_block(block))
+        _emit_snippet(result, block, indent)
 
     return result
 
@@ -280,7 +319,7 @@ def convert_code_block_titles(lines: list[str]) -> list[str]:
             content
             ```
 
-    Output (wrapped in raw block):
+    Output (wrapped in raw block for standalone, or indented for container context):
             .my-manifest.yaml
             [source,yaml]
             ----
@@ -289,24 +328,34 @@ def convert_code_block_titles(lines: list[str]) -> list[str]:
     """
     result = []
     i = 0
+    title_re = re.compile(r"^(?P<indent>\s*)```(\w*)\s+title=\"([^\"]+)\"\s*$")
 
     while i < len(lines):
-        match = re.match(r"^```(\w*)\s+title=\"([^\"]+)\"\s*$", lines[i])
+        match = title_re.match(lines[i])
         if match:
-            lang = match.group(1)
-            title = match.group(2)
+            indent = match.group("indent")
+            lang = match.group(2)
+            title = match.group(3)
             block = [f".{title}"]
             if lang:
                 block.append(f"[source,{lang}]")
             block.append("----")
             i += 1
-            while i < len(lines) and not lines[i].startswith("```"):
-                block.append(lines[i])
+            close_re = re.compile(r"^" + re.escape(indent) + r"```\s*$")
+            while i < len(lines) and not close_re.match(lines[i]):
+                line = lines[i]
+                if indent and line.startswith(indent):
+                    line = line[len(indent):]
+                block.append(line)
                 i += 1
             block.append("----")
             if i < len(lines):
                 i += 1
-            result.extend(_raw_block(block))
+            if indent:
+                for line in block:
+                    result.append(indent + line if line else "")
+            else:
+                result.extend(_raw_block(block))
         else:
             result.append(lines[i])
             i += 1
@@ -408,17 +457,18 @@ def process_file(filepath: str, base_path: Path | None = None) -> None:
     lines = content.splitlines()
 
     lines = convert_frontmatter(lines)
-    lines = convert_admonitions(lines)
-    lines = convert_tabbed_content(lines)
     lines = convert_snippets(lines, base_path=base_path)
     lines = convert_code_block_titles(lines)
     lines = convert_figure_captions(lines)
     lines = convert_markdown_links(lines)
+    lines = convert_admonitions(lines)
+    lines = convert_tabbed_content(lines)
 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main() -> None:
+    """CLI entry point: parse arguments and run the pre-processor."""
     parser = argparse.ArgumentParser(
         description="Pre-process MkDocs Markdown for pandoc conversion to AsciiDoc"
     )

@@ -59,10 +59,10 @@ The pre-processing script converts Material for MkDocs extensions that pandoc wo
 
 ```bash
 cp "<sig-docs-path>/<upstream-path>" "<working-copy>.md"
-python3 ${CLAUDE_SKILL_DIR}/scripts/md2adoc.py --base-path "${sig_docs_path}" "<working-copy>.md"
+python3 scripts/md2adoc.py --base-path "<sig-docs-path>" "<working-copy>.md"
 ```
 
-The `--base-path` flag points to the sig-docs repo root so that code file snippets (`.yml`, `.container`, `.conf`, `.sh`, etc.) are read from disk and inlined as AsciiDoc source blocks. Prose `.md` snippets remain as `include::` directives. See [md2adoc.py conversions](#md2adoc-conversions) for what it handles.
+The `--base-path` flag points to the sig-docs repo root so that code file snippets (`.yml`, `.container`, `.conf`, `.sh`, etc.) are read from disk and inlined as AsciiDoc source blocks. Prose `.md` snippets remain as `include::` directives and must also be converted (see step 2c). See [md2adoc.py conversions](#md2adoc-conversions) for what it handles.
 
 #### b. Run pandoc conversion
 
@@ -70,6 +70,15 @@ Convert the pre-processed Markdown to AsciiDoc:
 
 ```bash
 pandoc -f markdown -t asciidoc -o "<output-path>" "<working-copy>.md"
+```
+
+#### b1. Convert prose snippet files
+
+Any prose `.md` files referenced by `include::` directives in the output must also be converted to `.adoc`. For each prose snippet:
+
+```bash
+python3 scripts/md2adoc.py --base-path "<sig-docs-path>" "<prose-snippet>.md"
+pandoc -f markdown -t asciidoc -o "<prose-snippet>.adoc" "<prose-snippet>.md"
 ```
 
 #### c. Apply modular docs conventions
