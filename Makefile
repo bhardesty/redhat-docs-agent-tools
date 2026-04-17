@@ -10,8 +10,8 @@ build: ## Build the Zensical site
 	zensical build --clean
 
 update: ## Regenerate plugin docs (PLUGINS.md, docs/plugins/*, docs/install/*)
-	python scripts/scan_deps.py
-	python scripts/generate_plugin_docs.py
+	python3 scripts/scan_deps.py
+	python3 scripts/generate_plugin_docs.py
 
 clean: ## Remove build artifacts
 	rm -rf site/ docs/plugins.md docs/plugins/ docs/install/

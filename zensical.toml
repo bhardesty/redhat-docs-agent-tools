@@ -24,6 +24,7 @@ nav = [
         {"docs-tools" = "plugins/docs-tools.md"},
         {"hello-world" = "plugins/hello-world.md"},
         {"jtbd-tools" = "plugins/jtbd-tools.md"},
+        {"rhivos-tools" = "plugins/rhivos-tools.md"},
         {"vale-tools" = "plugins/vale-tools.md"},
     ]},
     {"Contribute" = [
