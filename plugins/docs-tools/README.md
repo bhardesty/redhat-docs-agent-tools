@@ -123,6 +123,73 @@ Use `--workflow <name>` to maintain different workflows for different purposes:
 /docs-orchestrator PROJ-123 --workflow full
 ```
 
+## Using the docs orchestrator locally
+
+Run the docs orchestrator from a Claude Code command prompt in the root of your documentation repository or from the chat panel in Agent mode in Cursor. The orchestrator reads a JIRA ticket, analyzes requirements, plans the documentation structure, writes modules, and runs technical and style reviews.
+
+### Basic usage
+
+To write files directly into your repo (update-in-place mode), run as follows:
+
+```bash
+/docs-orchestrator PROJ-123
+```
+
+In update-in-place mode, the orchestrator detects your repo's documentation framework (Antora, ccutil, etc.), creates a branch, writes files to the correct locations, and can commit and open a merge request.
+
+### Grounding documentation in source code
+
+When documenting a feature that lives in a source code repository, pass `--repo` to provide the code repository. The orchestrator clones the repo, indexes it using AST chunking and hybrid search, and retrieves relevant code snippets for each topic in the documentation plan. The writer then uses this evidence to ground its output in actual function signatures, class definitions, and configuration — rather than generating from the JIRA description alone.
+
+```bash
+/docs-orchestrator PROJ-123 --repo https://github.com/org/repo
+```
+
+The code-evidence step runs automatically when `--repo` is provided. It:
+
+1. Clones the repository (or uses it if it's a local path)
+2. Indexes the codebase using tree-sitter AST chunking
+3. Extracts search queries from the documentation plan
+4. Runs two-pass retrieval per query — source-scoped (function signatures, types) and unfiltered (READMEs, examples, docs)
+5. Writes `artifacts/<ticket>/code-evidence/evidence.json` for the writer and `summary.md` for human review
+
+Without `--repo`, the code-evidence step is skipped and the writer works from the JIRA ticket and documentation plan only.
+
+!!! tip
+
+    Code-evidence is most effective when the JIRA ticket has a detailed description. A well-described ticket combined with source code evidence produces documentation with significantly fewer technical review issues.
+
+### Including PR context
+
+If the feature has associated pull requests, pass their URLs to include the code changes in the requirements analysis:
+
+```bash
+/docs-orchestrator PROJ-123 --pr https://github.com/org/repo/pull/456
+```
+
+Multiple `--pr` flags can be passed. The requirements analyst will read the PR diff, comments, and description alongside the JIRA ticket.
+
+### Other options
+
+| Flag | Description |
+|------|-------------|
+| `--repo <url-or-path>` | Source code repository for code-evidence grounding |
+| `--pr <url>` | PR/MR URL to include in requirements analysis (repeatable) |
+| `--mkdocs` | Generate Material for MkDocs Markdown instead of AsciiDoc |
+| `--repo-path <path>` | Write files to a specific repo path (e.g., an external clone) |
+| `--create-jira <PROJECT>` | Create a linked JIRA ticket in the specified project |
+| `--workflow <name>` | Use `.claude/docs-<name>.yaml` instead of the default workflow |
+
+### Resuming a workflow
+
+The orchestrator saves progress to `artifacts/<ticket>/workflow/docs-workflow_<ticket>.json`. If a run is interrupted or fails, start the orchestrator again with the same ticket and it will resume from where it left off:
+
+```bash
+/docs-orchestrator PROJ-123
+```
+
+Completed steps are skipped automatically. You can add flags on resume (e.g., add `--create-jira` to a run that didn't originally include it).
+
 ## Using the docs orchestrator in CI/CD
 
 The docs orchestrator can run in GitHub Actions or GitLab CI using [Claude Code in the CLI](https://code.claude.com/docs/en/cli-reference). This lets you automate documentation workflows — for example, generating draft docs from a JIRA ticket when a PR is opened, or running style and technical reviews on documentation changes.
