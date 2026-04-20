@@ -18,8 +18,7 @@ The writer typically works from the **documentation repository**, not the code r
 
 ## Prerequisites
 
-- **uv** must be installed: `brew install uv` (macOS) or see https://docs.astral.sh/uv/getting-started/installation/
-- **code-finder** is installed automatically at runtime via `uv run --with code-finder`. No manual pip install required.
+- **code-finder** Python package. Install once with `python3 -m pip install code-finder`, or let the skill auto-install via `uv run --with code-finder` (requires **uv**: `brew install uv` on macOS, or see https://docs.astral.sh/uv/getting-started/installation/)
 - The wrapper script `scripts/find_evidence.py` calls the code-finder Python API directly (no CLI entry point required)
 
 ## Arguments
@@ -128,6 +127,23 @@ For each search query derived from the plan, add **two entries**:
 2. **Unfiltered** (Pass 2) — without `filter_paths`. Picks up READMEs, documentation, examples, and configuration files that provide narrative context.
 
 #### 5b. Run batch retrieval
+
+First, check if code-finder is already installed:
+
+```bash
+python3 -c "import claude_context" 2>/dev/null && echo "INSTALLED" || echo "NOT_INSTALLED"
+```
+
+If **INSTALLED**, run directly (avoids re-downloading ~1GB of ML dependencies):
+
+```bash
+python3 scripts/find_evidence.py \
+  --repo "$REPO_PATH" \
+  --queries-file "${OUTPUT_DIR}/queries.json" \
+  --limit <LIMIT>
+```
+
+If **NOT_INSTALLED**, fall back to uv:
 
 ```bash
 uv run --with code-finder python3 scripts/find_evidence.py \

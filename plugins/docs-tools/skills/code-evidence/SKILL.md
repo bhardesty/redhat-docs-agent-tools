@@ -16,8 +16,7 @@ Uses hybrid search: BM25 for exact keyword matches + vector embeddings for seman
 
 ## Prerequisites
 
-- **uv** must be installed: `brew install uv` (macOS) or see https://docs.astral.sh/uv/getting-started/installation/
-- **code-finder** is installed automatically at runtime via `uv run --with code-finder`. No manual pip install required.
+- **code-finder** Python package. Install once with `python3 -m pip install code-finder`, or let the skill auto-install via `uv run --with code-finder` (requires **uv**: `brew install uv` on macOS, or see https://docs.astral.sh/uv/getting-started/installation/)
 - The wrapper script at `${CLAUDE_PLUGIN_ROOT}/skills/docs-workflow-code-evidence/scripts/find_evidence.py` calls the code-finder Python API directly (no CLI entry point required)
 
 ## Arguments
@@ -41,6 +40,25 @@ Validate:
 
 ### 2. Run evidence retrieval
 
+First, check if code-finder is already installed:
+
+```bash
+python3 -c "import claude_context" 2>/dev/null && echo "INSTALLED" || echo "NOT_INSTALLED"
+```
+
+Use the appropriate command based on the result. If **INSTALLED**, run directly (avoids re-downloading ~1GB of ML dependencies). If **NOT_INSTALLED**, prefix with `uv run --with code-finder`.
+
+**Direct (code-finder installed):**
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-workflow-code-evidence/scripts/find_evidence.py \
+  --repo "<REPO_PATH>" \
+  --query "<QUERY>" \
+  --limit <LIMIT>
+```
+
+**Fallback (via uv):**
+
 ```bash
 uv run --with code-finder python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-workflow-code-evidence/scripts/find_evidence.py \
   --repo "<REPO_PATH>" \
@@ -48,15 +66,7 @@ uv run --with code-finder python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-workflow-cod
   --limit <LIMIT>
 ```
 
-If `--filter-paths` was provided:
-
-```bash
-uv run --with code-finder python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-workflow-code-evidence/scripts/find_evidence.py \
-  --repo "<REPO_PATH>" \
-  --query "<QUERY>" \
-  --limit <LIMIT> \
-  --filter-paths <FILTER_PATHS>
-```
+If `--filter-paths` was provided, add `--filter-paths <FILTER_PATHS>` to the command.
 
 If `--reindex` was provided, add `--reindex` to the command.
 
