@@ -46,7 +46,7 @@ If the script exits non-zero, stop and report the error from stderr.
 Select the prompt based on `mode` and `format` from the JSON output. In every prompt below, substitute the `<TICKET>`, `<INPUT_FILE>`, `<OUTPUT_FILE>`, `<OUTPUT_DIR>`, `<REPO_PATH>`, and `<FIX_FROM>` placeholders with the corresponding values from the script's JSON.
 
 **Agent tool parameters for all modes:**
-- `subagent_type`: `docs-writer`
+- `subagent_type`: `docs-tools:docs-writer`
 - `description`: use the value described under each mode below
 
 ---

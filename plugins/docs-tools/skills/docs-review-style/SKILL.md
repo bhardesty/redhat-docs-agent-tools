@@ -147,19 +147,19 @@ For `--pr` mode, use `python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts
 
 ### Agent 1: Style guide compliance (batch A)
 
-- `subagent_type`: `docs-reviewer`
+- `subagent_type`: `docs-tools:docs-reviewer`
 
 Focus on: `ibm-sg-language-and-grammar`, `ibm-sg-punctuation`, `ibm-sg-structure-and-format`, `ibm-sg-technical-elements`, `rh-ssg-grammar-and-language`, `rh-ssg-formatting`, `rh-ssg-structure`, `rh-ssg-technical-examples`
 
 ### Agent 2: Style guide compliance (batch B)
 
-- `subagent_type`: `docs-reviewer`
+- `subagent_type`: `docs-tools:docs-reviewer`
 
 Focus on: `ibm-sg-audience-and-medium`, `ibm-sg-numbers-and-measurement`, `ibm-sg-references`, `ibm-sg-legal-information`, `rh-ssg-gui-and-links`, `rh-ssg-legal-and-support`, `rh-ssg-accessibility`, `rh-ssg-release-notes`
 
 ### Agent 3: Modular docs structure and content quality
 
-- `subagent_type`: `docs-reviewer`
+- `subagent_type`: `docs-tools:docs-reviewer`
 
 Focus on: `docs-review-modular-docs`, `docs-review-content-quality`. Run Vale once per file if available.
 
@@ -238,7 +238,7 @@ If NO issues found, post a summary comment via `git-pr-reader`:
 cat <<'SUMMARY' > /tmp/docs-review-summary.json
 [{"file": "", "line": 0, "message": "## Style review\n\nNo issues found. Checked for style guide compliance, modular docs structure, and content quality.", "severity": "suggestion"}]
 SUMMARY
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py post "${PR_URL}" /tmp/docs-review-summary.json
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py post "${PR_URL}" /tmp/docs-review-summary.json --review-type style
 ```
 
 If issues found, continue to Step 8.
@@ -252,7 +252,7 @@ LINE=$(python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.
 
 Build comments JSON and post:
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py post "${PR_URL}" /tmp/docs-review-comments.json
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py post "${PR_URL}" /tmp/docs-review-comments.json --review-type style
 ```
 
 For each comment: brief description with style guide rule, include corrected text for small fixes, describe larger fixes without inline code. **Only ONE comment per unique issue.**

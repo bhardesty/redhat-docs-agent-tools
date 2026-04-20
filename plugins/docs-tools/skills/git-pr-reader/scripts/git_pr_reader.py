@@ -315,12 +315,14 @@ class GitReviewAPI(ABC):
         ...
 
     @abstractmethod
-    def post_inline_comment(self, comment: ReviewComment) -> Tuple[bool, str]:
+    def post_inline_comment(self, comment: ReviewComment,
+                            signoff: str = "Claude Code docs review") -> Tuple[bool, str]:
         """
         Post an inline comment on a specific line.
 
         Args:
             comment: ReviewComment to post.
+            signoff: Sign-off text appended to the comment.
 
         Returns:
             Tuple of (success, error_message).
@@ -506,13 +508,15 @@ class GitReviewAPI(ABC):
 
         return results
 
-    def post_comments(self, comments: List[Dict], dry_run: bool = False) -> PostResult:
+    def post_comments(self, comments: List[Dict], dry_run: bool = False,
+                      signoff: str = "Claude Code docs review") -> PostResult:
         """
         Post multiple review comments.
 
         Args:
             comments: List of comment dictionaries.
             dry_run: If True, do not actually post comments.
+            signoff: Sign-off text appended to each comment.
 
         Returns:
             PostResult with counts and errors.
@@ -543,9 +547,9 @@ class GitReviewAPI(ABC):
                 result.posted += 1
                 continue
 
-            body = f"{comment.message}\n\n\U0001F916 RHAI docs Claude Code review"
+            body = f"{comment.message}\n\n\U0001F916 {signoff}"
 
-            success, error = self.post_inline_comment(comment)
+            success, error = self.post_inline_comment(comment, signoff=signoff)
 
             if success:
                 color_print("Posted", key)
@@ -787,11 +791,12 @@ class GitHubReviewAPI(GitReviewAPI):
                 existing.append(f"{path}:{line}")
         return existing
 
-    def post_inline_comment(self, comment: ReviewComment) -> Tuple[bool, str]:
+    def post_inline_comment(self, comment: ReviewComment,
+                            signoff: str = "Claude Code docs review") -> Tuple[bool, str]:
         """Post an inline comment on a specific line using PyGithub."""
         try:
             pr_info = self.get_pr_info()
-            body = f"{comment.message}\n\n\U0001F916 RHAI docs Claude Code review"
+            body = f"{comment.message}\n\n\U0001F916 {signoff}"
             commit = self._repo.get_commit(pr_info["head_sha"])
             self._pr.create_review_comment(
                 body=body,
@@ -1078,11 +1083,12 @@ class GitLabReviewAPI(GitReviewAPI):
                         existing.append(f"{path}:{line}")
         return existing
 
-    def post_inline_comment(self, comment: ReviewComment) -> Tuple[bool, str]:
+    def post_inline_comment(self, comment: ReviewComment,
+                            signoff: str = "Claude Code docs review") -> Tuple[bool, str]:
         """Post an inline comment on a specific line using python-gitlab."""
         try:
             pr_info = self.get_pr_info()
-            body = f"{comment.message}\n\n\U0001F916 RHAI docs Claude Code review"
+            body = f"{comment.message}\n\n\U0001F916 {signoff}"
 
             position = {
                 "base_sha": pr_info.get("base_sha", ""),
@@ -1395,8 +1401,14 @@ def cmd_post(args) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    signoff_map = {
+        "technical": "Claude Code docs technical review",
+        "style": "Claude Code docs style review",
+    }
+    signoff = signoff_map.get(getattr(args, "review_type", None), "Claude Code docs review")
+
     try:
-        result = api.post_comments(comments, dry_run=args.dry_run)
+        result = api.post_comments(comments, dry_run=args.dry_run, signoff=signoff)
     except Exception as e:
         print(f"Error posting comments: {e}", file=sys.stderr)
         return 1
@@ -1786,6 +1798,10 @@ Examples:
     post_parser.add_argument(
         "--dry-run", action="store_true",
         help="Show what would be posted without actually posting",
+    )
+    post_parser.add_argument(
+        "--review-type", choices=["technical", "style"],
+        help="Review type for sign-off text (technical or style)",
     )
 
     # -- extract subcommand --------------------------------------------------

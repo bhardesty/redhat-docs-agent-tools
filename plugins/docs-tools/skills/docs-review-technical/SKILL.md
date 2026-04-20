@@ -136,7 +136,7 @@ For `--local` mode: `git diff "$BASE_BRANCH"...HEAD -- $(cat /tmp/docs-review-do
 
 ## Step 4: Agent 1 — Technical Accuracy and Consistency
 
-- `subagent_type`: `technical-reviewer`
+- `subagent_type`: `docs-tools:technical-reviewer`
 - `model`: `opus`
 
 Follow the full technical review process: doc type detection, reviewer persona (developer/architect lens), 6 review dimensions, confidence scoring, and output format. Use `jira-reader`, `git-pr-reader`, and `article-extractor` skills to cross-check technical claims. Do not duplicate style or formatting checks.
@@ -312,7 +312,7 @@ If NO issues found, post a summary comment via `git-pr-reader`:
 cat <<'SUMMARY' > /tmp/docs-review-summary.json
 [{"file": "", "line": 0, "message": "## Technical review\n\nNo issues found. Checked for technical accuracy and code-aware validation.", "severity": "suggestion"}]
 SUMMARY
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py post "${PR_URL}" /tmp/docs-review-summary.json
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py post "${PR_URL}" /tmp/docs-review-summary.json --review-type technical
 ```
 
 If issues found, continue to Step 11.
@@ -326,7 +326,7 @@ LINE=$(python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.
 
 Build comments JSON and post:
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py post "${PR_URL}" /tmp/docs-review-comments.json
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py post "${PR_URL}" /tmp/docs-review-comments.json --review-type technical
 ```
 
 For each comment: brief description with evidence from source code, include corrected values for small fixes, describe larger fixes without inline code. **Only ONE comment per unique issue.**

@@ -49,7 +49,7 @@ mkdir -p "$OUTPUT_DIR"
 Select the prompt below based on the `--format` flag.
 
 **Agent tool parameters:**
-- `subagent_type`: `docs-reviewer`
+- `subagent_type`: `docs-tools:docs-reviewer`
 - `description`: `Review documentation for <TICKET>`
 
 **Prompt for AsciiDoc** (`--format adoc`) — pass as the `prompt` parameter to the Agent tool:

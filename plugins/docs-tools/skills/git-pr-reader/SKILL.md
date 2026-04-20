@@ -70,7 +70,8 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py diff https://github.com/own
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py post https://github.com/owner/repo/pull/123 comments.json
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py post https://github.com/owner/repo/pull/123 comments.json --dry-run
+python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py post https://github.com/owner/repo/pull/123 comments.json --review-type technical
+python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py post https://github.com/owner/repo/pull/123 comments.json --review-type style --dry-run
 ```
 
 #### extract — Extract line numbers from diff
