@@ -188,7 +188,7 @@ For each requirement, record:
 
 ### 6. Generate recommended actions
 
-For each **partial** or **absent** requirement, generate a contextual recommended action. Use the following as input:
+For each **partial** or **absent** requirement, generate a contextual recommended action and assign a gap category. Use the following as input:
 - The requirement text (title + summary)
 - What was found (if anything) — the key_files and top_score
 - The `discovered_repos` list from step 2
@@ -199,7 +199,15 @@ Guidelines for recommended actions:
 - If no evidence exists, suggest confirming with SME whether the feature is implemented
 - Keep actions concise — one or two sentences
 
-For **grounded** requirements, set `recommended_action` to `null`.
+Assign a `gap_category` to each partial or absent requirement. Use one of:
+- `api_reference` — missing API specs, CRD definitions, or endpoint documentation
+- `implementation` — missing core feature implementation code
+- `sdk` — missing SDK, client library, or CLI tooling
+- `configuration` — missing configuration options, environment variables, or CR fields
+- `architecture` — missing design docs, component relationships, or data flow
+- `examples` — missing sample configurations, tutorials, or quickstart content
+
+For **grounded** requirements, set `recommended_action` and `gap_category` to `null`.
 
 ### 7. Write output
 
@@ -212,6 +220,7 @@ Write the complete classification results to `$EVIDENCE_STATUS_FILE`:
   "ticket": "<TICKET>",
   "repo_path": "<REPO_PATH>",
   "thresholds": { "grounded": 0.5, "absent": 0.25 },
+  "recommendation": "proceed|gather-more|review-needed",
   "requirements": [
     {
       "id": "REQ-001",
@@ -221,6 +230,7 @@ Write the complete classification results to `$EVIDENCE_STATUS_FILE`:
       "top_score": 0.87,
       "snippet_count": 4,
       "key_files": ["path/to/file.go"],
+      "gap_category": null,
       "recommended_action": null
     }
   ],
@@ -240,6 +250,13 @@ Write the complete classification results to `$EVIDENCE_STATUS_FILE`:
 }
 ```
 
+The `recommendation` field is derived from the summary counts:
+- **`proceed`** — no absent requirements
+- **`gather-more`** — some absent requirements, but grounded outnumber absent
+- **`review-needed`** — absent requirements equal or outnumber grounded, or more than half of all requirements are absent
+
+The `gap_category` field classifies the type of missing evidence for partial and absent requirements. Set to `null` for grounded requirements.
+
 #### summary.md
 
 Write a human-readable summary to `$SUMMARY_FILE`:
@@ -250,6 +267,7 @@ Write a human-readable summary to `$SUMMARY_FILE`:
 **Ticket:** <TICKET>
 **Repository:** <REPO_PATH>
 **Thresholds:** grounded >= <GROUNDED_THRESHOLD>, absent < <ABSENT_THRESHOLD>
+**Recommendation:** proceed|gather-more|review-needed
 
 ## Classification Summary
 
@@ -266,12 +284,12 @@ Write a human-readable summary to `$SUMMARY_FILE`:
 
 ## Partial Requirements
 
-- **REQ-003: [title]** — score: 0.41, files: `path/to/stub.go`
+- **REQ-003: [title]** — score: 0.41, category: implementation, files: `path/to/stub.go`
   Action: [recommended_action]
 
 ## Absent Requirements
 
-- **REQ-002: [title]** — score: 0.12
+- **REQ-002: [title]** — score: 0.12, category: sdk
   Action: [recommended_action]
 
 ## Discovered Repos (not indexed)
