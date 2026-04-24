@@ -252,8 +252,15 @@ if [[ "$PLATFORM" == "gitlab" ]]; then
   # Fork detection: query GitLab API for fork parent
   HEAD_PROJECT=""
   PROJECT_PATH_ENCODED="$(echo "$PROJECT_PATH" | sed 's|/|%2F|g')"
-  UPSTREAM_PROJECT="$(glab api "projects/${PROJECT_PATH_ENCODED}" \
-    --jq '.forked_from_project.path_with_namespace // empty' 2>/dev/null || true)"
+  GLAB_OUTPUT=""
+  GLAB_RC=0
+  GLAB_OUTPUT="$(glab api "projects/${PROJECT_PATH_ENCODED}" \
+    --jq '.forked_from_project.path_with_namespace // empty' 2>&1)" || GLAB_RC=$?
+  if [[ $GLAB_RC -ne 0 ]]; then
+    echo "ERROR: glab api call failed (exit $GLAB_RC): $GLAB_OUTPUT" >&2
+    exit 1
+  fi
+  UPSTREAM_PROJECT="$GLAB_OUTPUT"
 
   if [[ -n "$UPSTREAM_PROJECT" ]]; then
     HEAD_PROJECT="$PROJECT_PATH"
