@@ -259,6 +259,8 @@ if [[ "$PLATFORM" == "gitlab" ]]; then
   GLAB_OUTPUT="$(glab api "projects/${PROJECT_PATH_ENCODED}" 2>&1)" || GLAB_RC=$?
   if [[ $GLAB_RC -ne 0 ]]; then
     echo "ERROR: glab api call failed (exit $GLAB_RC): $GLAB_OUTPUT" >&2
+    write_mr_info "null" "skipped" ""
+    write_step_result "null" "skipped" true "glab_api_failed (exit $GLAB_RC)"
     exit 1
   fi
   UPSTREAM_PROJECT="$(echo "$GLAB_OUTPUT" | jq -r '.forked_from_project.path_with_namespace // empty')"
