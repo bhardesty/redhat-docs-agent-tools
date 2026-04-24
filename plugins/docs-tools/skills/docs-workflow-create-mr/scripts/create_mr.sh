@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Create or find an existing MR/PR for the published docs branch.
 # Usage: bash create_mr.sh <ticket-id> --base-path <path> [--repo-path <path>] [--draft]
-# Dependencies: python3, glab CLI (for GitLab), gh CLI (for GitHub)
+# Dependencies: python3, jq, glab CLI (for GitLab), gh CLI (for GitHub)
 set -euo pipefail
 
 # --- Argument parsing ---
 TICKET=""
 BASE_PATH=""
+# Parsed for interface consistency with sibling workflow scripts
+# shellcheck disable=SC2034 
 REPO_PATH=""
 DRAFT=false
 
@@ -254,13 +256,12 @@ if [[ "$PLATFORM" == "gitlab" ]]; then
   PROJECT_PATH_ENCODED="$(echo "$PROJECT_PATH" | sed 's|/|%2F|g')"
   GLAB_OUTPUT=""
   GLAB_RC=0
-  GLAB_OUTPUT="$(glab api "projects/${PROJECT_PATH_ENCODED}" \
-    --jq '.forked_from_project.path_with_namespace // empty' 2>&1)" || GLAB_RC=$?
+  GLAB_OUTPUT="$(glab api "projects/${PROJECT_PATH_ENCODED}" 2>&1)" || GLAB_RC=$?
   if [[ $GLAB_RC -ne 0 ]]; then
     echo "ERROR: glab api call failed (exit $GLAB_RC): $GLAB_OUTPUT" >&2
     exit 1
   fi
-  UPSTREAM_PROJECT="$GLAB_OUTPUT"
+  UPSTREAM_PROJECT="$(echo "$GLAB_OUTPUT" | jq -r '.forked_from_project.path_with_namespace // empty')"
 
   if [[ -n "$UPSTREAM_PROJECT" ]]; then
     HEAD_PROJECT="$PROJECT_PATH"
@@ -269,15 +270,9 @@ if [[ "$PLATFORM" == "gitlab" ]]; then
   fi
 
   # Check for existing MR (searches upstream project for cross-fork MRs)
-  EXISTING_URL="$(glab mr list --source-branch "$BRANCH" --repo "$PROJECT_PATH" -F json 2>/dev/null \
-    | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-if isinstance(data, list) and len(data) > 0:
-    print(data[0].get('web_url', ''))
-else:
-    print('')
-" 2>/dev/null || echo "")"
+  UPSTREAM_PATH_ENCODED="$(echo "$PROJECT_PATH" | sed 's|/|%2F|g')"
+  EXISTING_URL="$(glab api "projects/${UPSTREAM_PATH_ENCODED}/merge_requests?source_branch=${BRANCH}&state=opened" \
+    2>/dev/null | jq -r '.[0].web_url // empty' 2>/dev/null || echo "")"
 
   if [[ -n "$EXISTING_URL" ]]; then
     echo "Found existing MR: ${EXISTING_URL}"
