@@ -22,10 +22,8 @@ except ImportError:
     GithubException = Exception  # type: ignore[assignment,misc]
 
 try:
-    import gitlab
     from gitlab import Gitlab
 except ImportError:
-    gitlab = None  # type: ignore[assignment]
     Gitlab = None  # type: ignore[assignment,misc]
 
 
@@ -256,7 +254,7 @@ class GitHubBackend:
             prs = target.get_pulls(head=head, state="open")
             for pr in prs:
                 return pr.html_url
-        except Exception as e:
+        except GithubException as e:
             print(f"WARNING: Could not check for existing PRs: {e}", file=sys.stderr)
         return ""
 
