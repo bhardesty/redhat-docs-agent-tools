@@ -135,9 +135,11 @@ class Extractor:
                     in_code = True
                     code_delim = delim
                     block = {
-                        "file": fpath, "line": line_num,
+                        "file": fpath,
+                        "line": line_num,
                         "content_start_line": line_num + (2 if skip_next else 1),
-                        "language": lang, "content": [],
+                        "language": lang,
+                        "content": [],
                         "context": block_title or heading,
                     }
                     continue
@@ -152,9 +154,11 @@ class Extractor:
                     in_code = True
                     code_delim = delim
                     block = {
-                        "file": fpath, "line": line_num,
+                        "file": fpath,
+                        "line": line_num,
                         "content_start_line": line_num + (2 if skip_next else 1),
-                        "language": lang, "content": [],
+                        "language": lang,
+                        "content": [],
                         "context": block_title or heading,
                     }
                     continue
@@ -165,9 +169,11 @@ class Extractor:
                     in_code = True
                     code_delim = "```"
                     block = {
-                        "file": fpath, "line": line_num,
+                        "file": fpath,
+                        "line": line_num,
                         "content_start_line": line_num + 1,
-                        "language": lang, "content": [],
+                        "language": lang,
+                        "content": [],
                         "context": block_title or heading,
                     }
                     continue
@@ -176,9 +182,11 @@ class Extractor:
                     in_code = True
                     code_delim = line
                     block = {
-                        "file": fpath, "line": line_num,
+                        "file": fpath,
+                        "line": line_num,
                         "content_start_line": line_num + 1,
-                        "language": "text", "content": [],
+                        "language": "text",
+                        "content": [],
                         "context": block_title or heading,
                     }
                     continue
@@ -218,27 +226,38 @@ class Extractor:
             # Commands ($ command)
             m = RE_COMMAND_LINE.match(line)
             if m:
-                self.refs["commands"].append({
-                    "file": fpath, "line": line_num,
-                    "command": m.group(1).strip(),
-                    "context": block_title or heading,
-                })
+                self.refs["commands"].append(
+                    {
+                        "file": fpath,
+                        "line": line_num,
+                        "command": m.group(1).strip(),
+                        "context": block_title or heading,
+                    }
+                )
 
             # Inline code paths
             for m in RE_INLINE_CODE_PATH.finditer(line):
-                self.refs["file_paths"].append({
-                    "file": fpath, "line": line_num,
-                    "path": m.group(1), "context": heading,
-                })
+                self.refs["file_paths"].append(
+                    {
+                        "file": fpath,
+                        "line": line_num,
+                        "path": m.group(1),
+                        "context": heading,
+                    }
+                )
 
             # API endpoints
             m = RE_API_ENDPOINT.search(line)
             if m:
-                self.refs["apis"].append({
-                    "file": fpath, "line": line_num,
-                    "type": "endpoint", "name": m.group(1),
-                    "context": heading,
-                })
+                self.refs["apis"].append(
+                    {
+                        "file": fpath,
+                        "line": line_num,
+                        "type": "endpoint",
+                        "name": m.group(1),
+                        "context": heading,
+                    }
+                )
 
         # Handle unclosed block
         if in_code and block:
@@ -259,32 +278,46 @@ class Extractor:
             m = RE_COMMAND_LINE_CODE.match(cline.strip())
             if m:
                 prompt = "root" if cline.lstrip().startswith("#") else "user"
-                self.refs["commands"].append({
-                    "file": fpath, "line": content_start + offset,
-                    "command": m.group(1).strip(),
-                    "prompt_type": prompt, "context": ctx,
-                })
+                self.refs["commands"].append(
+                    {
+                        "file": fpath,
+                        "line": content_start + offset,
+                        "command": m.group(1).strip(),
+                        "prompt_type": prompt,
+                        "context": ctx,
+                    }
+                )
 
         # Function calls
         for m in RE_FUNCTION_CALL.finditer(content):
             name = m.group(1)
             if len(name) < 3 or name.lower() in SKIP_FUNCTIONS:
                 continue
-            hit_offset = content[:m.start()].count("\n")
-            self.refs["apis"].append({
-                "file": fpath, "line": content_start + hit_offset,
-                "type": "function", "name": name,
-                "language": lang, "context": ctx,
-            })
+            hit_offset = content[: m.start()].count("\n")
+            self.refs["apis"].append(
+                {
+                    "file": fpath,
+                    "line": content_start + hit_offset,
+                    "type": "function",
+                    "name": name,
+                    "language": lang,
+                    "context": ctx,
+                }
+            )
 
         # Class definitions
         for m in RE_CLASS_DEF.finditer(content):
-            hit_offset = content[:m.start()].count("\n")
-            self.refs["apis"].append({
-                "file": fpath, "line": content_start + hit_offset,
-                "type": "class", "name": m.group(1),
-                "language": lang, "context": ctx,
-            })
+            hit_offset = content[: m.start()].count("\n")
+            self.refs["apis"].append(
+                {
+                    "file": fpath,
+                    "line": content_start + hit_offset,
+                    "type": "class",
+                    "name": m.group(1),
+                    "language": lang,
+                    "context": ctx,
+                }
+            )
 
         # Config keys from YAML/JSON/TOML
         if lang.lower() in ("yaml", "yml", "json", "toml"):
@@ -306,10 +339,15 @@ class Extractor:
 
         keys = list(dict.fromkeys(keys))  # dedupe preserving order
         if keys:
-            self.refs["configs"].append({
-                "file": fpath, "line": line_num,
-                "format": fmt, "keys": keys, "context": ctx,
-            })
+            self.refs["configs"].append(
+                {
+                    "file": fpath,
+                    "line": line_num,
+                    "format": fmt,
+                    "keys": keys,
+                    "context": ctx,
+                }
+            )
 
 
 def main():

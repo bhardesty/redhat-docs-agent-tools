@@ -46,11 +46,14 @@ def main():
         help="Path to JSON file with batch drafts (see docstring for schema)",
     )
     parser.add_argument(
-        "--max-evidence", type=int, default=5,
+        "--max-evidence",
+        type=int,
+        default=5,
         help="Max evidence snippets per claim (default: 5)",
     )
     parser.add_argument(
-        "--reindex", action="store_true",
+        "--reindex",
+        action="store_true",
         help="Force re-indexing (applied to first draft only in batch mode)",
     )
     args = parser.parse_args()
@@ -93,8 +96,11 @@ def main():
     # Single draft mode
     if args.draft:
         result = _run_single(
-            grounded_review, args.repo, args.draft,
-            args.max_evidence, args.reindex,
+            grounded_review,
+            args.repo,
+            args.draft,
+            args.max_evidence,
+            args.reindex,
         )
         json.dump(result, sys.stdout, indent=2, default=str)
         print()
@@ -110,8 +116,11 @@ def main():
         reindex = args.reindex and i == 0
 
         result = _run_single(
-            grounded_review, args.repo, draft,
-            max_evidence, reindex,
+            grounded_review,
+            args.repo,
+            draft,
+            max_evidence,
+            reindex,
         )
         results.append({"draft": draft, "result": result})
 

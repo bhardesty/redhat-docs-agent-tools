@@ -16,11 +16,10 @@ import sys
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Extract public API surface from source files"
-    )
+    parser = argparse.ArgumentParser(description="Extract public API surface from source files")
     parser.add_argument(
-        "--target", required=True,
+        "--target",
+        required=True,
         help="Path to a file or directory to analyze",
     )
     parser.add_argument(
@@ -28,11 +27,13 @@ def main():
         help="Comma-separated language filter (e.g., python,typescript)",
     )
     parser.add_argument(
-        "--include-private", action="store_true",
+        "--include-private",
+        action="store_true",
         help="Include private names (prefixed with _)",
     )
     parser.add_argument(
-        "--no-docstrings", action="store_true",
+        "--no-docstrings",
+        action="store_true",
         help="Exclude docstrings from output",
     )
     args = parser.parse_args()
