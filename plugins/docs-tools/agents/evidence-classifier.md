@@ -28,25 +28,24 @@ Examples:
 
 ### 2. Run code search
 
-Run the search using the script path, repo path, and install method provided in your prompt:
+Run the search using the values from the CONFIGURATION block in your prompt. Substitute `<script>`, `<repo>`, and `<query>` with the actual values.
 
-If `INSTALL_METHOD` is `direct`:
-
-```bash
-python3 "$FIND_EVIDENCE_SCRIPT" \
-  --repo "$REPO_PATH" \
-  --query "<your query>" \
-  --limit 5
-```
-
-If `INSTALL_METHOD` is `uv`:
+If INSTALL_METHOD is `direct`:
 
 ```bash
-uv run --with code-finder python3 "$FIND_EVIDENCE_SCRIPT" \
-  --repo "$REPO_PATH" \
-  --query "<your query>" \
-  --limit 5
+python3 <script> --repo <repo> --query "<query>" --limit 5
 ```
+
+If INSTALL_METHOD is `uv`:
+
+```bash
+uv run --with code-finder python3 <script> --repo <repo> --query "<query>" --limit 5
+```
+
+Where:
+- `<script>` — the FIND_EVIDENCE_SCRIPT path from CONFIGURATION
+- `<repo>` — the REPO_PATH from CONFIGURATION
+- `<query>` — the search query you built in step 1
 
 Capture the JSON output from stdout. If the command fails, return an error result (see output format below).
 
