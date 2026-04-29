@@ -3,7 +3,7 @@ name: requirements-analyst
 description: Deep analysis agent for a single documentation requirement. Receives one requirement skeleton from the discovery pass, fetches detailed source content (JIRA, PRs, specs), performs web search expansion, and returns structured JSON with full requirement details including acceptance criteria and references.
 tools: Read, Glob, Grep, Bash, Skill, WebSearch, WebFetch
 skills: jira-reader, git-pr-reader, article-extractor, redhat-docs-toc, docs-convert-gdoc-md
-maxTurns: 15
+maxTurns: 25
 ---
 
 # Your role
