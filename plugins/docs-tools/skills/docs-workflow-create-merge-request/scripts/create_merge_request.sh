@@ -129,7 +129,7 @@ if [[ "$branch" == "main" || "$branch" == "master" ]]; then
 
     # Stash working tree (includes untracked files from writing step)
     stash_count_before=$(git_cmd stash list 2>/dev/null | wc -l)
-    git_cmd stash push --include-untracked -m "docs-pipeline: pre-branch stash" 2>/dev/null || true
+    git_cmd stash push --include-untracked -m "docs-pipeline: pre-branch stash"
     stash_count_after=$(git_cmd stash list 2>/dev/null | wc -l)
 
     git_cmd reset --hard "${base_remote}/${branch}"
@@ -304,7 +304,7 @@ elif [[ "$platform" == "gitlab" ]]; then
     if [[ "$is_fork" == true ]]; then
         upstream_encoded=$(echo "$upstream_project" | sed 's|/|%2F|g')
         mr_url=$(glab api "projects/$upstream_encoded/merge_requests?source_branch=$branch&state=opened" \
-            --jq '.[0].web_url // empty' 2>/dev/null || true)
+            2>/dev/null | jq -r '.[0].web_url // empty' || true)
     else
         mr_url=$(glab mr list --source-branch "$branch" -F json 2>/dev/null \
             | jq -r '.[0].web_url // empty' || true)
@@ -317,7 +317,7 @@ elif [[ "$platform" == "gitlab" ]]; then
         if [[ "$is_fork" == true ]]; then
             # Fork: POST to fork's endpoint with target_project_id
             fork_encoded=$(echo "$origin_project" | sed 's|/|%2F|g')
-            upstream_id=$(glab api "projects/$upstream_encoded" --jq '.id' 2>/dev/null || true)
+            upstream_id=$(glab api "projects/$upstream_encoded" 2>/dev/null | jq -r '.id // empty' || true)
 
             if [[ -z "$upstream_id" ]]; then
                 echo "ERROR: Cannot resolve upstream project ID for '$upstream_project'" >&2
