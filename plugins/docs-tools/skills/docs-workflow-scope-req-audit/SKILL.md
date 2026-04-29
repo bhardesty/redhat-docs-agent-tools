@@ -1,17 +1,15 @@
 ---
 name: docs-workflow-scope-req-audit
-description: Classify JIRA requirements by code evidence status before planning. Queries the code-finder index once per requirement to determine if each is grounded (implemented), partial, or absent in the codebase. Prevents hallucinated documentation for unimplemented features and surfaces gaps for implemented ones. Conditional on has_source_repo. Reuses find_evidence.py from the code-evidence step.
+description: Classify JIRA requirements by code evidence status before planning. Fans out one subagent per requirement for isolated classification — each subagent queries the code-finder index independently, keeping context clean regardless of requirement count. Prevents hallucinated documentation for unimplemented features and surfaces gaps for implemented ones. Conditional on has_source_repo. Reuses find_evidence.py from the code-evidence step.
 argument-hint: <ticket> --base-path <path> --repo <path> [--grounded-threshold <float>] [--absent-threshold <float>]
-allowed-tools: Read, Write, Glob, Grep, Bash
+allowed-tools: Read, Write, Glob, Grep, Bash, Agent
 ---
 
 # Scope Requirements Audit Step
 
-Step skill for the docs-orchestrator pipeline. Follows the step skill contract: **parse args → run tool → write output**.
+Step skill for the docs-orchestrator pipeline. Follows the step skill contract: **parse args → fan out → merge → write output**.
 
-This skill classifies each JIRA requirement from the requirements step as grounded, partial, or absent by querying the code-finder index. The planning step then uses these classifications to scope documentation modules — grounded requirements get full specs, partial ones are flagged for SME review, and absent ones are deferred to prevent documenting unimplemented features.
-
-This is a tool-only step (no agent dispatch). Claude executes the steps directly.
+This skill classifies each JIRA requirement from the requirements step as grounded, partial, or absent by dispatching one subagent per requirement. Each subagent queries the code-finder index independently with a clean context window. The planning step then uses these classifications to scope documentation modules — grounded requirements get full specs, partial ones are flagged for SME review, and absent ones are deferred to prevent documenting unimplemented features.
 
 ## Prerequisites
 
@@ -54,7 +52,6 @@ REQUIREMENTS_FILE="${BASE_PATH}/requirements/requirements.md"
 OUTPUT_DIR="${BASE_PATH}/scope-req-audit"
 EVIDENCE_STATUS_FILE="${OUTPUT_DIR}/evidence-status.json"
 SUMMARY_FILE="${OUTPUT_DIR}/summary.md"
-QUERIES_FILE="${OUTPUT_DIR}/queries.json"
 mkdir -p "$OUTPUT_DIR"
 ```
 
@@ -126,118 +123,105 @@ For each requirement, extract:
 
 If no requirements are found matching this pattern, STOP with error: "No requirements found in requirements.md. Expected REQ-NNN pattern."
 
-### 4. Build queries and run batch retrieval
+### 4. Pre-flight: check code-finder installation and warm the index
 
-For each requirement, generate one natural-language search query that tests for implementation evidence. Convert the requirement summary into a query focused on code existence:
-
-- Strip documentation-oriented language ("document how to", "explain the", "describe the")
-- Focus on the implementation artifact (e.g., "Python SDK client library" not "Python SDK documentation")
-- Keep the query specific enough to distinguish from tangential matches
-
-Examples:
-- REQ "CA bundle configuration support" → query "CA bundle configuration implementation"
-- REQ "Python SDK for notebook-based workflows" → query "Python SDK client library implementation"
-- REQ "Kueue workload scheduling integration" → query "Kueue queue integration workload scheduling"
-- REQ "Audit logging for evaluation jobs" → query "audit logging implementation evaluation jobs"
-
-Write the queries to `$QUERIES_FILE` as a JSON array:
-
-```json
-[
-  {"query": "CA bundle configuration implementation", "limit": 5},
-  {"query": "Python SDK client library implementation", "limit": 5}
-]
-```
-
-Then run batch retrieval using `find_evidence.py`. First, check if code-finder is already installed:
+Determine the install method for code-finder:
 
 ```bash
 python3 -c "import claude_context.skills.evidence_retrieval" 2>/dev/null && echo "INSTALLED" || echo "NOT_INSTALLED"
 ```
 
-If **INSTALLED**, run directly:
+Set `INSTALL_METHOD` to `direct` if INSTALLED, or `uv` if NOT_INSTALLED.
+
+Warm the code-finder index before fanning out. This ensures the index is built once (expensive) and all subagents reuse the cached index at `{repo}/.vibe2doc/index.db`. Run one throwaway query:
+
+If `INSTALL_METHOD` is `direct`:
 
 ```bash
-python3 "$FIND_EVIDENCE_SCRIPT" \
-  --repo "$REPO_PATH" \
-  --queries-file "$QUERIES_FILE" \
-  --limit 5
+python3 "$FIND_EVIDENCE_SCRIPT" --repo "$REPO_PATH" --query "initialization" --limit 1
 ```
 
-If **NOT_INSTALLED**, fall back to uv:
+If `INSTALL_METHOD` is `uv`:
 
 ```bash
-uv run --with code-finder python3 "$FIND_EVIDENCE_SCRIPT" \
-  --repo "$REPO_PATH" \
-  --queries-file "$QUERIES_FILE" \
-  --limit 5
+uv run --with code-finder python3 "$FIND_EVIDENCE_SCRIPT" --repo "$REPO_PATH" --query "initialization" --limit 1
 ```
 
-The script outputs a JSON array of results to stdout. Capture this output.
+Discard the output. If this fails, STOP with error including the stderr output — the index cannot be built.
 
-This creates the code-finder index on the first query. The index is cached at `{repo}/.vibe2doc/index.db` and will be reused by the later code-evidence step.
+### 5. Fan out: dispatch one agent per requirement
 
-### 5. Classify results
+For each requirement extracted in step 3, dispatch one Agent call. Launch ALL requirement agents in a **single message** (parallel execution).
 
-Parse the batch retrieval output. For each requirement's query results, classify based on the top-N results:
+For each requirement, use:
 
-The batch retrieval output is a JSON array. Each entry has the structure:
+```
+Agent:
+  subagent_type: docs-tools:evidence-classifier
+  model: haiku
+  description: "Classify REQ-NNN: <title truncated to 40 chars>"
+  prompt: |
+    Classify this requirement by code evidence status.
+
+    REQUIREMENT:
+    - ID: <id>
+    - Title: <title>
+    - Summary: <summary>
+
+    CONFIGURATION:
+    - REPO_PATH: <absolute repo path>
+    - FIND_EVIDENCE_SCRIPT: <absolute script path>
+    - GROUNDED_THRESHOLD: <threshold>
+    - ABSENT_THRESHOLD: <threshold>
+    - INSTALL_METHOD: <direct|uv>
+
+    DISCOVERED_REPOS:
+    <JSON array of discovered_repos from step 2, or [] if none>
+```
+
+**Important:** All Agent calls MUST be in a single message so they run in parallel. Do not dispatch them sequentially.
+
+### 6. Merge: collect agent results
+
+Each agent returns a JSON object. Parse each agent's response to extract the JSON.
+
+If an agent's response is not valid JSON or is missing required fields (`id`, `status`), create a fallback entry:
 
 ```json
 {
-  "query": "...",
-  "filter_paths": null,
-  "result": {
-    "query": "...",
-    "repo_path": "...",
-    "result_count": 5,
-    "results": [
-      {
-        "rank": 1,
-        "file_path": "...",
-        "scores": {"vector": 0.37, "bm25": 17.1, "combined": 0.78},
-        ...
-      }
-    ]
-  }
+  "id": "<expected REQ-NNN>",
+  "title": "<expected title>",
+  "query": "unknown",
+  "status": "error",
+  "error": "Agent did not return valid JSON",
+  "top_score": 0.0,
+  "snippet_count": 0,
+  "key_files": [],
+  "gap_category": null,
+  "recommended_action": null
 }
 ```
 
-Results are under `result.results` (not `result.chunks`). Scores are under each result's `scores.combined` (not `combined_score`).
+Treat `error` status the same as `absent` for counting and recommendation purposes.
 
-Classify based on the top-N results:
+Collect all per-requirement results into a list ordered by requirement ID.
 
-**Grounded:** top hit `scores.combined` >= grounded threshold (default 0.5) AND 2 or more snippets with scores above the absent threshold.
+Compute summary counts:
+- `grounded` — count of requirements with status `grounded`
+- `partial` — count of requirements with status `partial`
+- `absent` — count of requirements with status `absent` or `error`
+- `total` — total requirements
 
-**Partial:** top hit score is between the absent and grounded thresholds, OR only 1 snippet scores above the grounded threshold. This covers cases where a stub, configuration reference, or partial implementation exists but the full feature is unclear.
-
-**Absent:** top hit score < absent threshold (default 0.25), or the result set is empty. This indicates no meaningful code evidence for the requirement.
-
-For each requirement, record:
-- `id`, `title` — from step 3
-- `query` — the search query used
-- `status` — `grounded`, `partial`, or `absent`
-- `top_score` — the highest `scores.combined` from the results
-- `snippet_count` — number of result snippets returned
-- `key_files` — file paths from the top 3 results (deduplicated)
-
-### 6. Generate recommended actions
-
-For each **partial** or **absent** requirement, generate a contextual recommended action and assign a gap category.
-
-Read the prompt from `${CLAUDE_SKILL_DIR}/prompts/gap-classification.md`. Combine it with:
-- The list of partial and absent requirements (id, title, status, top_score, snippet_count, key_files)
-- The `discovered_repos` list from step 2
-
-Use the prompt to generate a `recommended_action` and `gap_category` for each partial or absent requirement.
-
-For **grounded** requirements, set `recommended_action` and `gap_category` to `null`.
+Compute the recommendation:
+- **`proceed`** — no absent or error requirements
+- **`gather-more`** — some absent/error requirements, but grounded outnumber absent+error
+- **`review-needed`** — absent+error requirements equal or outnumber grounded, or more than half of all requirements are absent/error
 
 ### 7. Write output
 
 #### evidence-status.json
 
-Write the complete classification results to `$EVIDENCE_STATUS_FILE`:
+Write the merged classification results to `$EVIDENCE_STATUS_FILE`:
 
 ```json
 {
@@ -274,12 +258,7 @@ Write the complete classification results to `$EVIDENCE_STATUS_FILE`:
 }
 ```
 
-The `recommendation` field is derived from the summary counts:
-- **`proceed`** — no absent requirements
-- **`gather-more`** — some absent requirements, but grounded outnumber absent
-- **`review-needed`** — absent requirements equal or outnumber grounded, or more than half of all requirements are absent
-
-The `gap_category` field classifies the type of missing evidence for partial and absent requirements. Set to `null` for grounded requirements.
+The output format is identical to the previous single-pass implementation. Downstream consumers (planning step, orchestrator) see no change.
 
 #### summary.md
 
@@ -360,8 +339,13 @@ If `evidence-status.json` does not exist (step was skipped or not configured), t
 
 ## Notes
 
-- The code-finder index is created on the first query and cached at `{repo}/.vibe2doc/index.db`. The later code-evidence step reuses this cached index
-- Single-pass unfiltered retrieval is used (no source-scoped vs context distinction) since the goal is existence classification, not detailed snippet retrieval
+- **Fanout pattern:** Each requirement is classified by an independent subagent with a clean context window. This prevents context degradation when processing many requirements — classification quality for REQ-015 is identical to REQ-001
+- **Index warming:** The code-finder index is built once in step 4 (pre-flight) and cached at `{repo}/.vibe2doc/index.db`. All subagents reuse this cached index, so only the first query pays the indexing cost
+- **Parallel execution:** All subagent Agent calls are dispatched in a single message for parallel execution. The orchestrator waits for all to complete before merging
+- **Error isolation:** A failed subagent does not affect other requirements — the orchestrator marks it as `error` and continues merging
+- **Model choice:** Subagents use `model: haiku` since the task is mechanical (run script, parse JSON, apply thresholds). The gap classification requires minimal language understanding
+- **Error status:** The `error` classification (subagent failure) is treated identically to `absent` for recommendation logic. This status did not exist in the previous single-pass implementation because there was no subagent failure mode
+- **Intermediate artifacts:** The previous version wrote a `queries.json` file to the output directory. This file is no longer produced — each subagent builds its query internally. The file was not consumed by any downstream step
 - The thresholds (0.5 grounded, 0.25 absent) are based on empirical data from the comparison report — known-good matches scored 0.87+, known-absent items scored below 0.2
 - This step queries the primary source repo only. Multi-repo querying is a follow-on enhancement
 - The `discovered_repos` section helps bridge the multi-repo gap by surfacing companion repos that the user could add via `--source-code-repo` in a re-run
