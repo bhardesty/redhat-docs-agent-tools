@@ -146,40 +146,41 @@ When analyzing multiple related requirements, group them into thematic clusters 
 
 Clusters with High overlap risk should be consolidated into fewer modules.
 
-## Audience classification
+## Persona-differentiated job statements
 
-A single JIRA ticket or feature often spans multiple audiences. Before planning modules, classify each capability or feature by its target audience using evidence from the requirements, code, and CRD/API definitions.
+A single JIRA ticket or feature often involves distinct jobs for different personas. When analyzing requirements, identify whether a capability serves one persona or multiple personas with fundamentally different goals. Use evidence from the requirements, code, and CRD/API definitions to make this determination.
 
-### Classification
+### Why this matters
 
-For each capability, assign one of:
+The JTBD framework organizes documentation by user goals, not by features. When a feature spans admin setup and developer consumption, these are **two different jobs** — the admin's job ("ensure the platform capability is available and correctly configured") and the developer's job ("use the platform capability to build my application") have different situations, motivations, and outcomes. Treating them as one job produces modules that serve neither audience well.
 
-| Classification | Meaning | Typical signals |
-|----------------|---------|-----------------|
-| **Admin-only** | Only an administrator performs or cares about this | Operator installation, cluster-scoped CRD setup, RBAC policy, infrastructure configuration, platform-level tuning |
-| **User/Developer-only** | Only an end user or developer performs or cares about this | Application-level API calls, SDK usage, user-facing CLI commands, consuming a service exposed by the platform |
-| **Both** | The capability has an admin setup surface AND a separate user consumption surface | Admin creates/configures a CRD → users interact with the namespaced resources it exposes; admin enables a platform capability → developers consume it via API |
+### Identifying multi-persona capabilities
 
-### When a capability targets both audiences
+Use available evidence to determine whether a capability involves separate jobs for different personas:
 
-Do not merge admin and user content into a single module. Instead:
+| Evidence | Likely persona | Example job map stage |
+|----------|---------------|----------------------|
+| Operator installation, cluster-scoped CRD setup, RBAC policy, infrastructure configuration | SysAdmin / IT Operations Leader | Administer, Configure |
+| Application-level API calls, SDK usage, user-facing CLI commands, namespaced resources | Developer | Develop, Deploy |
+| Cluster-scoped CRD that an operator watches | SysAdmin (setup job) | Configure |
+| Namespaced CRD that users create instances of | Developer (consumption job) | Develop |
+| API endpoint requiring cluster-admin RBAC | SysAdmin | Administer |
+| API endpoint available to authenticated users | Developer | Develop |
 
-1. **Plan separate modules** for the admin and user sides of the capability, each with the appropriate persona and placement
-2. **Admin modules** cover the setup, configuration, and lifecycle management side — e.g., installing an operator, defining a cluster-scoped CRD, configuring operator settings
-3. **User/Developer modules** cover the consumption side — e.g., creating namespaced custom resources, calling APIs exposed by the capability, integrating with the feature from application code
-4. **Cross-reference** between them: admin docs should note what the capability enables for users; user docs should link to admin prerequisites
+When a capability appears in both columns — for example, an operator installs a controller (admin job) and users create CRs to use it (developer job) — define separate job statements for each persona.
 
-### How to determine the classification
+### Applying the JTBD hierarchy to multi-persona capabilities
 
-Use the available evidence — requirements text, code evidence, CRD definitions, API schemas:
+When you identify separate jobs for different personas, follow the standard JTBD process for each:
 
-- A CRD with `scope: Cluster` that an operator watches → likely admin-facing setup
-- A CRD with `scope: Namespaced` that users create instances of → likely user-facing consumption
-- An API endpoint behind RBAC that requires cluster-admin → admin module
-- An API endpoint available to authenticated users → user/developer module
-- A single feature that involves both (operator installs a controller, users create CRs to use it) → classify as **Both** and plan separate modules
+1. **Define separate job statements** — each persona gets its own "When [situation], I want to [motivation], so I can [outcome]" statement, because their situations and outcomes differ
+2. **Map each job to the hierarchy independently** — the admin job may fall under "Administer" or "Configure" while the developer job falls under "Develop" or "Deploy"
+3. **Plan separate user stories and modules** — do not merge user stories from different personas into a single module, even when they relate to the same underlying feature
+4. **Cross-reference between jobs** — admin modules should note what the capability enables for developers; developer modules should link to admin prerequisites under the relevant admin job
 
-If the evidence is ambiguous, flag it in the plan for SME review rather than defaulting to admin-only.
+### When evidence is ambiguous
+
+If the available evidence does not clearly indicate whether a capability serves one persona or multiple, flag it in the plan for SME review rather than defaulting to a single persona. State what evidence would resolve the ambiguity.
 
 ## Gap analysis
 
