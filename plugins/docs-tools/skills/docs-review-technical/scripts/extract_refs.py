@@ -13,7 +13,6 @@ import argparse
 import json
 import logging
 import re
-import sys
 from pathlib import Path
 
 log = logging.getLogger("extract_refs")
@@ -191,7 +190,12 @@ class Extractor:
                 elif code_delim and line == code_delim:
                     is_end = True
                 elif code_delim is None:
-                    if not line.strip() or RE_SOURCE_BLOCK.match(line) or RE_LISTING_BLOCK.match(line) or RE_HEADING_ADOC.match(line):
+                    if (
+                        not line.strip()
+                        or RE_SOURCE_BLOCK.match(line)
+                        or RE_LISTING_BLOCK.match(line)
+                        or RE_HEADING_ADOC.match(line)
+                    ):
                         is_end = True
 
                 if is_end and block is not None:
@@ -290,11 +294,15 @@ class Extractor:
         keys = []
         fl = fmt.lower()
         if fl in ("yaml", "yml"):
-            keys = [m.group(1) for m in re.finditer(r"^\s*([a-zA-Z_][a-zA-Z0-9_-]*):", content, re.M)]
+            keys = [
+                m.group(1) for m in re.finditer(r"^\s*([a-zA-Z_][a-zA-Z0-9_-]*):", content, re.M)
+            ]
         elif fl == "json":
             keys = [m.group(1) for m in re.finditer(r'"([a-zA-Z_][a-zA-Z0-9_-]*)"\s*:', content)]
         elif fl == "toml":
-            keys = [m.group(1) for m in re.finditer(r"^([a-zA-Z_][a-zA-Z0-9_-]*)\s*=", content, re.M)]
+            keys = [
+                m.group(1) for m in re.finditer(r"^([a-zA-Z_][a-zA-Z0-9_-]*)\s*=", content, re.M)
+            ]
 
         keys = list(dict.fromkeys(keys))  # dedupe preserving order
         if keys:
