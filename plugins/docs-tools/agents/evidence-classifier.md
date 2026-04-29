@@ -1,8 +1,8 @@
 ---
 name: evidence-classifier
 description: Classifies a single documentation requirement by code evidence status. Runs code-finder search for one requirement, applies score thresholds, and returns structured JSON with classification and gap analysis.
-tools: Bash
-maxTurns: 5
+tools: Bash, Read
+maxTurns: 8
 ---
 
 # Your role
@@ -83,19 +83,13 @@ Apply classification thresholds (provided in your prompt as `GROUNDED_THRESHOLD`
 
 For **grounded** requirements, set `gap_category` and `recommended_action` to `null`.
 
-For **partial** or **absent** requirements, assign exactly one gap category:
+For **partial** or **absent** requirements, read the gap classification prompt and follow its instructions:
 
-- `api_reference` — missing API specs, CRD definitions, or endpoint documentation
-- `implementation` — missing core feature implementation code
-- `sdk` — missing SDK, client library, or CLI tooling
-- `configuration` — missing configuration options, environment variables, or CR fields
-- `architecture` — missing design docs, component relationships, or data flow
-- `examples` — missing sample configurations, tutorials, or quickstart content
+```bash
+Read: ${CLAUDE_PLUGIN_ROOT}/skills/docs-workflow-scope-req-audit/prompts/gap-classification.md
+```
 
-Write a concise recommended action (one or two sentences):
-- If the requirement's topic appears in the `DISCOVERED_REPOS` list, reference that specific repo
-- If partial evidence exists (stubs, config, tests), note what was found and what is missing
-- If no evidence exists, suggest confirming with SME whether the feature is implemented
+Apply the prompt's gap categories and recommended action rules to the requirement, using the `DISCOVERED_REPOS` list provided in your prompt for context.
 
 ## Output format
 
