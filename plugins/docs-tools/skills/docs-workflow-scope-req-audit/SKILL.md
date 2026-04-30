@@ -158,7 +158,7 @@ If an agent's response is not valid JSON or is missing required fields (`id`, `s
   "id": "<expected REQ-NNN>",
   "title": "<expected title>",
   "query": "unknown",
-  "status": "error",
+  "status": "absent",
   "error": "Agent did not return valid JSON",
   "top_score": 0.0,
   "snippet_count": 0,
@@ -168,20 +168,20 @@ If an agent's response is not valid JSON or is missing required fields (`id`, `s
 }
 ```
 
-Treat `error` status the same as `absent` for counting and recommendation purposes.
+Fallback entries use `"status": "absent"` so the downstream contract (`grounded|partial|absent`) is preserved. The optional `"error"` field carries diagnostic detail for debugging.
 
 Collect all per-requirement results into a list ordered by requirement ID.
 
 Compute summary counts:
 - `grounded` — count of requirements with status `grounded`
 - `partial` — count of requirements with status `partial`
-- `absent` — count of requirements with status `absent` or `error`
+- `absent` — count of requirements with status `absent`
 - `total` — total requirements
 
 Compute the recommendation:
-- **`proceed`** — no absent or error requirements
-- **`gather-more`** — some absent/error requirements, but grounded outnumber absent+error
-- **`review-needed`** — absent+error requirements equal or outnumber grounded, or more than half of all requirements are absent/error
+- **`proceed`** — no absent requirements
+- **`gather-more`** — some absent requirements, but grounded outnumber absent
+- **`review-needed`** — absent requirements equal or outnumber grounded, or more than half of all requirements are absent
 
 ### 7. Write output
 
@@ -308,9 +308,8 @@ If `evidence-status.json` does not exist (step was skipped or not configured), t
 - **Fanout pattern:** Each requirement is classified by an independent subagent with a clean context window. This prevents context degradation when processing many requirements — classification quality for REQ-015 is identical to REQ-001
 - **Index warming:** The code-finder index is built once in step 4 (pre-flight) and cached at `{repo}/.vibe2doc/index.db`. All subagents reuse this cached index, so only the first query pays the indexing cost
 - **Parallel execution:** All subagent Agent calls are dispatched in a single message for parallel execution. The orchestrator waits for all to complete before merging
-- **Error isolation:** A failed subagent does not affect other requirements — the orchestrator marks it as `error` and continues merging
+- **Error isolation:** A failed subagent does not affect other requirements — the merge step creates a fallback entry with `"status": "absent"` and an `"error"` field for diagnostics
 - **Model choice:** Subagents use `model: haiku` since the task is mechanical (run script, parse JSON, apply thresholds). The gap classification requires minimal language understanding
-- **Error status:** The `error` classification (subagent failure) is treated identically to `absent` for recommendation logic. This status did not exist in the previous single-pass implementation because there was no subagent failure mode
 - **Intermediate artifacts:** The previous version wrote a `queries.json` file to the output directory. This file is no longer produced — each subagent builds its query internally. The file was not consumed by any downstream step
 - The thresholds (0.5 grounded, 0.25 absent) are based on empirical data from the comparison report — known-good matches scored 0.87+, known-absent items scored below 0.2
 - This step queries the primary source repo only. Multi-repo querying is a follow-on enhancement

@@ -19,9 +19,9 @@ export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel
 
 ## CRITICAL: Mandatory access verification
 
-**You MUST successfully access all primary sources before proceeding. NEVER make assumptions, inferences, or guesses about source content if access fails.**
+**You MUST successfully access all sources listed in the requirement's `sources` array. NEVER make assumptions, inferences, or guesses about source content if access fails.**
 
-If access to JIRA or Git fails, **STOP IMMEDIATELY** and return an error result (see output format). Never guess or infer content.
+Before fetching, inspect the requirement's `sources` list. Only attempt access to systems that are actually listed (JIRA for `type: "jira"`, Git for `type: "pr"`, etc.). If a listed source fails access, **STOP IMMEDIATELY** and return an error result (see output format). Do not hard-fail for systems that are not in the sources list.
 
 **Do not** prepend `source ~/.env` to bash commands — all Python scripts load `~/.env` automatically.
 

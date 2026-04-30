@@ -46,7 +46,7 @@ GITLAB_MR_RE = re.compile(r"https?://gitlab\.[^/]+/(.+?)/-/merge_requests/(\d+)"
 
 # Repo URL extraction patterns (for git_links that aren't PRs)
 GITHUB_REPO_RE = re.compile(r"https?://github\.com/([^/]+/[^/]+?)(?:\.git)?(?:/.*)?$")
-GITLAB_REPO_RE = re.compile(r"(https?://gitlab\.[^/]+/[^/]+/[^/]+?)(?:\.git)?(?:/-/.*)?$")
+GITLAB_REPO_RE = re.compile(r"(https?://gitlab\.[^/]+/.+?)(?:\.git)?(?:/-/.*)?$")
 
 
 def _is_remote_url(value):
