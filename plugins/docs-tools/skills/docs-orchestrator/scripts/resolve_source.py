@@ -165,6 +165,11 @@ def _normalize_git_url(url):
     return url.rstrip("/").removesuffix(".git")
 
 
+def _repo_name_from_url(url):
+    """Extract the repository name from a git URL."""
+    return _normalize_git_url(url).split("/")[-1]
+
+
 def _resolve_pr_info(pr_url):
     """Extract repo URL and branch from a GitHub PR or GitLab MR URL.
 
@@ -390,7 +395,7 @@ def _write_source_yaml(base_path, repo, ref):
 def _resolve_multiple_prs(pr_urls, base_path):
     """Resolve and clone repos from a list of PR/MR URLs.
 
-    Groups PRs by repo, clones each repo into code-repo/<repo_name>/,
+    Groups PRs by repo, clones each into code-repo/<repo_name>/,
     and returns a success result with primary + additional repos.
     """
     # Group PRs by normalized repo URL
@@ -413,17 +418,12 @@ def _resolve_multiple_prs(pr_urls, base_path):
 
     resolved_repos = []
     errors = []
-    use_subdirs = len(repo_groups) > 1
-
     for normalized, info in repo_groups.items():
         repo_url = info["repo_url"]
         ref = info["ref"]
 
-        if use_subdirs:
-            repo_name = normalized.split("/")[-1]
-            repo_clone_dir = base_path / "code-repo" / repo_name
-        else:
-            repo_clone_dir = base_path / "code-repo"
+        repo_name = _repo_name_from_url(repo_url)
+        repo_clone_dir = base_path / "code-repo" / repo_name
 
         if repo_clone_dir.exists():
             if not _verify_existing_clone(repo_clone_dir, ref, expected_repo_url=repo_url):
@@ -482,23 +482,24 @@ def _success(repo_path, repo_url=None, ref=None, scope=None, discovered_repos=No
     return result
 
 
-def resolve(args):
-    """Main resolution logic. Returns a result dict."""
-    base_path = Path(args.base_path)
-    clone_dir = base_path / "code-repo"
+def _resolve_explicit_repos(repo_values, pr_urls, base_path):
+    """Resolve one or more explicit --repo values.
 
-    # Collect PR URLs from args
-    pr_urls = args.pr or []
+    Clones each remote repo into code-repo/<repo_name>/.
+    For a single repo with PRs, the first PR's branch is checked out.
+    Returns primary + additional repos when multiple are given.
+    """
+    resolved_repos = []
+    errors = []
 
-    # --- Priority 1: Explicit --repo flag ---
-    if args.repo:
-        repo_value = args.repo
+    for i, repo_value in enumerate(repo_values):
         ref = None
-        scope = None
 
         if _is_remote_url(repo_value):
-            # If PRs provided, get the branch from the first PR
-            if pr_urls:
+            clone_dir = base_path / "code-repo" / _repo_name_from_url(repo_value)
+
+            # First repo gets the PR branch (if any)
+            if i == 0 and pr_urls:
                 try:
                     _, pr_branch = _resolve_pr_info(pr_urls[0])
                     ref = pr_branch
@@ -508,37 +509,68 @@ def resolve(args):
                         file=sys.stderr,
                     )
 
-            # Clone or verify
             if clone_dir.exists():
                 if not _verify_existing_clone(clone_dir, ref, expected_repo_url=repo_value):
-                    return {
-                        "status": "error",
-                        "message": (
-                            f"Existing clone at {clone_dir} is invalid "
-                            "or points to a different repo."
-                        ),
-                    }
+                    errors.append(
+                        f"Existing clone at {clone_dir} is invalid "
+                        "or points to a different repo."
+                    )
+                    continue
             else:
                 if not _clone_repo(repo_value, clone_dir, ref):
-                    return {
-                        "status": "error",
-                        "message": (
-                            f"Cannot clone {repo_value}. "
-                            "For private repos, ensure gh is authenticated."
-                        ),
-                    }
+                    errors.append(
+                        f"Cannot clone {repo_value}. "
+                        "For private repos, ensure gh is authenticated."
+                    )
+                    continue
 
-            _write_source_yaml(base_path, repo_value, ref)
-            return _success(clone_dir, repo_url=repo_value, ref=ref, scope=scope)
+            resolved_repos.append({
+                "repo_path": str(clone_dir),
+                "repo_url": repo_value,
+                "ref": ref,
+            })
         else:
-            # Local path
             local = Path(repo_value)
             if not local.exists() or not local.is_dir():
-                return {
-                    "status": "error",
-                    "message": f"Source repo path does not exist: {repo_value}",
-                }
-            return _success(local, ref=ref, scope=scope)
+                errors.append(f"Source repo path does not exist: {repo_value}")
+                continue
+            resolved_repos.append({
+                "repo_path": str(local),
+                "repo_url": None,
+                "ref": None,
+            })
+
+    if not resolved_repos:
+        return {
+            "status": "error",
+            "message": f"Could not resolve any repos. Errors: {'; '.join(errors)}",
+        }
+
+    primary = resolved_repos[0]
+    _write_source_yaml(base_path, primary.get("repo_url") or primary["repo_path"], primary["ref"])
+
+    result = _success(
+        primary["repo_path"],
+        repo_url=primary.get("repo_url"),
+        ref=primary["ref"],
+    )
+    if len(resolved_repos) > 1:
+        result["additional_repos"] = resolved_repos[1:]
+    if errors:
+        result["warnings"] = errors
+    return result
+
+
+def resolve(args):
+    """Main resolution logic. Returns a result dict."""
+    base_path = Path(args.base_path)
+
+    # Collect PR URLs from args
+    pr_urls = args.pr or []
+
+    # --- Priority 1: Explicit --repo flag ---
+    if args.repo:
+        return _resolve_explicit_repos(args.repo, pr_urls, base_path)
 
     # --- Priority 2: source.yaml ---
     source_config = _read_source_yaml(base_path)
@@ -556,6 +588,7 @@ def resolve(args):
                 pass
 
         if _is_remote_url(repo_value):
+            clone_dir = base_path / "code-repo" / _repo_name_from_url(repo_value)
             if clone_dir.exists():
                 if not _verify_existing_clone(clone_dir, ref, expected_repo_url=repo_value):
                     return {
@@ -611,12 +644,13 @@ def main():
     )
     parser.add_argument(
         "--repo",
-        help="Source repo URL or local path",
+        nargs="+",
+        help="Source repo URL(s) or local path(s), space-delimited",
     )
     parser.add_argument(
         "--pr",
-        action="append",
-        help="PR/MR URL (repeatable)",
+        nargs="+",
+        help="PR/MR URL(s), space-delimited",
     )
     parser.add_argument(
         "--scan-requirements",
