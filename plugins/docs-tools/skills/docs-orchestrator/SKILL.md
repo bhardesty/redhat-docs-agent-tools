@@ -81,11 +81,13 @@ All clone, verify, PR-resolution, and source.yaml logic is handled by the `resol
 
 ### Pre-flight resolution
 
-Run the script with whatever source information is available from CLI args:
+Run the script with whatever source information is available from CLI args. Always pass `--ticket` and `--plugin-root` so the script can attempt JIRA-based discovery if explicit sources are absent:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/resolve_source.py \
   --base-path <base_path> \
+  --ticket <TICKET> \
+  --plugin-root ${CLAUDE_PLUGIN_ROOT} \
   [--repo <url-or-path>...] \
   [--pr <url>...]
 ```
@@ -95,7 +97,8 @@ The script checks sources in priority order:
 1. **CLI `--source-code-repo` flag** — clone or verify the path
 2. **Per-ticket `source.yaml`** — read and apply existing config
 3. **PR-derived** — resolve repo URL and branch from `--pr` via `gh pr view` or `glab mr view`
-4. **No source** — exit code 2, defer resolution until after requirements
+4. **JIRA ticket discovery** — query the ticket's `git_links` and auto-discovered PR URLs, extract repo URLs, and select the primary repo by reference count. If multiple repos tie, return an error listing candidates
+5. **No source** — exit code 2, defer resolution until after requirements
 
 The script outputs JSON to stdout:
 
@@ -156,7 +159,7 @@ Read the YAML file and extract the ordered step list. Each step has: `name`, `sk
 
 If the YAML includes a top-level `workflow.requires` list, check each condition **before evaluating steps or running anything**:
 
-- `has_source_repo` → a source repo must be resolvable from the CLI args (`--source-code-repo` or `--pr`). If neither was provided, **STOP** immediately with: `"This workflow requires a source code repository. Pass --source-code-repo <url-or-path> or --pr <url>."`
+- `has_source_repo` → a source repo must be resolvable. The pre-flight resolution script tries CLI args, `source.yaml`, PR-derived, and JIRA ticket discovery (git links and auto-discovered PRs) in priority order. If **none** of these yield a source repo, **STOP** immediately with: `"This workflow requires a source code repository. No repo could be discovered from the JIRA ticket. Pass --source-code-repo <url-or-path> or --pr <url>."`
 
 Unlike `when` (which makes individual steps conditional), `requires` is a workflow-level precondition — the entire workflow fails if a required condition is not met. This prevents users from running a code-evidence-heavy workflow without a repo and only discovering the problem after requirements and planning have already completed.
 
@@ -418,10 +421,12 @@ This section triggers **only** when the `requirements` step completes AND `optio
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/resolve_source.py \
   --base-path <base_path> \
+  --ticket <TICKET> \
+  --plugin-root ${CLAUDE_PLUGIN_ROOT} \
   --scan-requirements
 ```
 
-The script scans `requirements.md` for GitHub/GitLab PR/MR URLs, groups them by repo, resolves all repos equally (via `gh pr view` or `glab mr view`), clones each into `code-repo/<name>/`, and writes `source.yaml` for the primary repo.
+The script first attempts JIRA ticket discovery (git links and auto-discovered PRs from the ticket graph), then scans `requirements.md` for GitHub/GitLab PR/MR URLs as a fallback. It groups discovered repos, resolves all repos equally (via `gh pr view` or `glab mr view`), clones each into `code-repo/<name>/`, and writes `source.yaml` for the primary repo.
 
 ### 2. Handle the result
 

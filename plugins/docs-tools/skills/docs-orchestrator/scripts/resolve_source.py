@@ -14,7 +14,11 @@ Modes:
 2. From existing source.yaml:
     python3 resolve_source.py --base-path .claude/docs/proj-123
 
-3. Scan requirements.md for PR URLs (post-requirements discovery):
+3. JIRA ticket discovery (auto-discover repo from ticket git links):
+    python3 resolve_source.py --base-path .claude/docs/proj-123 \
+        --ticket PROJ-123 --plugin-root /path/to/docs-tools
+
+4. Scan requirements.md for PR URLs (post-requirements discovery):
     python3 resolve_source.py --base-path .claude/docs/proj-123 --scan-requirements
 
 Output: JSON to stdout with the resolved source info, or an error status.
@@ -39,6 +43,10 @@ from pathlib import Path
 # PR/MR URL patterns
 GITHUB_PR_RE = re.compile(r"https?://github\.com/([^/]+/[^/]+)/pull/(\d+)")
 GITLAB_MR_RE = re.compile(r"https?://gitlab\.[^/]+/(.+?)/-/merge_requests/(\d+)")
+
+# Repo URL extraction patterns (for git_links that aren't PRs)
+GITHUB_REPO_RE = re.compile(r"https?://github\.com/([^/]+/[^/]+?)(?:\.git)?(?:/.*)?$")
+GITLAB_REPO_RE = re.compile(r"(https?://gitlab\.[^/]+/[^/]+/[^/]+?)(?:\.git)?(?:/-/.*)?$")
 
 
 def _is_remote_url(value):
@@ -291,6 +299,143 @@ def _scan_requirements_for_prs(base_path):
         )
 
     return repos
+
+
+def _extract_repo_url(link_url):
+    """Extract a normalized repo URL from a GitHub/GitLab link.
+
+    Handles PR URLs, commit URLs, file URLs, tree URLs, and plain repo URLs.
+    Returns a normalized https repo URL (without .git), or None if unrecognized.
+    """
+    # GitHub PR
+    match = GITHUB_PR_RE.match(link_url)
+    if match:
+        return f"https://github.com/{match.group(1)}"
+
+    # GitLab MR
+    match = GITLAB_MR_RE.match(link_url)
+    if match:
+        base = link_url.split("/-/merge_requests/")[0]
+        return _normalize_git_url(base)
+
+    # GitLab other paths (commits, tree, blob, etc.)
+    match = GITLAB_REPO_RE.match(link_url)
+    if match:
+        return _normalize_git_url(match.group(1))
+
+    # GitHub other paths (commits, tree, blob, actions, etc.)
+    match = GITHUB_REPO_RE.match(link_url)
+    if match:
+        slug = match.group(1)
+        # Exclude non-repo GitHub pages
+        if slug.split("/")[0] in ("orgs", "settings", "marketplace", "topics"):
+            return None
+        return f"https://github.com/{slug}"
+
+    return None
+
+
+def _discover_from_jira(ticket, base_path, plugin_root):
+    """Discover source repo(s) from JIRA ticket git_links and auto-discovered PRs.
+
+    Calls jira_reader.py to fetch the ticket's remote links, extracts repo URLs,
+    groups by repo, and selects the primary repo by reference count.
+
+    Returns a result dict (same contract as resolve()).
+    """
+    jira_script = Path(plugin_root) / "skills" / "jira-reader" / "scripts" / "jira_reader.py"
+    if not jira_script.exists():
+        return {
+            "status": "error",
+            "message": f"jira_reader.py not found at {jira_script}",
+        }
+
+    # Fetch git_links from --issue
+    git_links = []
+    try:
+        result = subprocess.run(  # noqa: S603
+            ["python3", str(jira_script), "--issue", ticket],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode == 0:
+            issue_data = json.loads(result.stdout)
+            if isinstance(issue_data, list):
+                issue_data = issue_data[0]
+            git_links = issue_data.get("git_links", [])
+    except (json.JSONDecodeError, subprocess.TimeoutExpired, IndexError):
+        pass
+
+    # Fetch auto_discovered_urls.pull_requests from --graph
+    auto_prs = []
+    try:
+        result = subprocess.run(  # noqa: S603
+            ["python3", str(jira_script), "--graph", ticket],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode == 0:
+            graph_data = json.loads(result.stdout)
+            auto_prs = graph_data.get("auto_discovered_urls", {}).get("pull_requests", [])
+    except (json.JSONDecodeError, subprocess.TimeoutExpired):
+        pass
+
+    # Combine all discovered URLs (dedup)
+    all_urls = list(dict.fromkeys(git_links + auto_prs))
+    if not all_urls:
+        return {"status": "no_source"}
+
+    # Group by normalized repo URL and count references
+    repo_counts = {}  # normalized_url -> {"url": canonical_url, "count": N, "pr_urls": [...]}
+    for url in all_urls:
+        repo_url = _extract_repo_url(url)
+        if not repo_url:
+            continue
+        normalized = _normalize_git_url(repo_url)
+        if normalized not in repo_counts:
+            repo_counts[normalized] = {"url": repo_url, "count": 0, "pr_urls": []}
+        repo_counts[normalized]["count"] += 1
+        if GITHUB_PR_RE.match(url) or GITLAB_MR_RE.match(url):
+            repo_counts[normalized]["pr_urls"].append(url)
+
+    if not repo_counts:
+        return {"status": "no_source"}
+
+    # Sort by count descending
+    ranked = sorted(repo_counts.values(), key=lambda r: r["count"], reverse=True)
+
+    if len(ranked) == 1:
+        winner = ranked[0]
+    elif ranked[0]["count"] > ranked[1]["count"]:
+        winner = ranked[0]
+    else:
+        # Tie — fail with candidates
+        tied = [r for r in ranked if r["count"] == ranked[0]["count"]]
+        candidates = ", ".join(r["url"] for r in tied)
+        return {
+            "status": "error",
+            "message": (
+                f"Multiple source repos discovered from JIRA ticket {ticket} "
+                f"with equal reference counts ({ranked[0]['count']} each): {candidates}. "
+                "Pass --source-code-repo <url> to select one."
+            ),
+        }
+
+    # Resolve the winner
+    if winner["pr_urls"]:
+        result = _resolve_multiple_prs(winner["pr_urls"], base_path)
+    else:
+        result = _resolve_explicit_repos([winner["url"]], [], base_path)
+
+    # Include all discovered repos in the result for logging
+    if len(ranked) > 1 and result.get("status") == "resolved":
+        result["discovered_repos"] = {
+            _normalize_git_url(r["url"]): r["count"] for r in ranked
+        }
+
+    return result
 
 
 def _clone_repo(repo_url, clone_dir, ref=None):
@@ -618,7 +763,15 @@ def resolve(args):
     if pr_urls:
         return _resolve_multiple_prs(pr_urls, base_path)
 
-    # --- Priority 4: Scan requirements for PRs ---
+    # --- Priority 4: JIRA ticket discovery ---
+    ticket = getattr(args, "ticket", None)
+    plugin_root = getattr(args, "plugin_root", None)
+    if ticket and plugin_root:
+        result = _discover_from_jira(ticket, base_path, plugin_root)
+        if result["status"] != "no_source":
+            return result
+
+    # --- Priority 5: Scan requirements for PRs ---
     if args.scan_requirements:
         repos = _scan_requirements_for_prs(base_path)
 
@@ -629,7 +782,7 @@ def resolve(args):
         all_pr_urls = [prs[0]["url"] for prs in repos.values()]
         return _resolve_multiple_prs(all_pr_urls, base_path)
 
-    # --- Priority 5: No source ---
+    # --- Priority 6: No source ---
     return {"status": "no_source"}
 
 
@@ -651,6 +804,14 @@ def main():
         "--pr",
         nargs="+",
         help="PR/MR URL(s), space-delimited",
+    )
+    parser.add_argument(
+        "--ticket",
+        help="JIRA ticket ID for auto-discovery of source repo from git links",
+    )
+    parser.add_argument(
+        "--plugin-root",
+        help="Plugin root directory (for locating jira_reader.py)",
     )
     parser.add_argument(
         "--scan-requirements",
