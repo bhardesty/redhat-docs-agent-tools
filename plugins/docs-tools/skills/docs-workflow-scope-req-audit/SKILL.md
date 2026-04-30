@@ -67,18 +67,10 @@ Validate:
 - Verify `$REQUIREMENTS_FILE` exists. If not, STOP with error: "Requirements step must complete before scope-req-audit."
 - Verify the repo path exists and is a directory. If not, STOP with error: "Repo path does not exist: `<path>`."
 
-Locate the `find_evidence.py` script from the code-evidence skill.
-
-Claude Code:
+Locate the `find_evidence.py` script from the code-evidence skill:
 
 ```bash
 FIND_EVIDENCE_SCRIPT="${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/find_evidence.py"
-```
-
-Cursor (paths are relative to the repository root):
-
-```bash
-FIND_EVIDENCE_SCRIPT="plugins/docs-tools/skills/code-evidence/scripts/find_evidence.py"
 ```
 
 Verify the script exists. If not, STOP with error: "find_evidence.py not found at expected path."
