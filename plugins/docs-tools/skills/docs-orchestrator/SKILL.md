@@ -338,7 +338,7 @@ Write the marker file using the Write tool at the same time as creating or updat
 {
   "ticket": "<TICKET>",
   "workflow_type": "<workflow.name from YAML>",
-  "progress_file": ".claude/docs/<ticket>/workflow/<workflow-type>_<ticket>.json"
+  "progress_file": ".claude/docs/<ticket-lower>/workflow/<workflow-type>_<ticket-lower>.json"
 }
 ```
 

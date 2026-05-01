@@ -28,11 +28,18 @@ if [ ! -f "$MARKER" ]; then
   exit 0
 fi
 
-# Read the marker
+# Read the marker — fail closed on parse errors
 PROGRESS_FILE=$(jq -r '.progress_file // empty' "$MARKER" 2>/dev/null)
+JQ_RC_PF=$?
 TICKET=$(jq -r '.ticket // empty' "$MARKER" 2>/dev/null)
+JQ_RC_TK=$?
 
-# Marker is malformed or empty → clean up and allow stop
+if [ "$JQ_RC_PF" -ne 0 ] || [ "$JQ_RC_TK" -ne 0 ]; then
+  echo "Failed to parse $MARKER; refusing to stop (fail closed)." >&2
+  exit 2
+fi
+
+# Marker parsed successfully but fields are empty → stale marker → clean up
 if [ -z "$PROGRESS_FILE" ] || [ -z "$TICKET" ]; then
   rm -f "$MARKER"
   exit 0
