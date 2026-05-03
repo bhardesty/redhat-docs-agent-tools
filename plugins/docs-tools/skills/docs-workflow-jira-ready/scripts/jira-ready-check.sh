@@ -79,11 +79,11 @@ _safe_load_env() {
     fi
   done < "$file"
 }
-_safe_load_env ~/.env
 _project_root="$(cd "$SCRIPT_DIR" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || true)"
 if [[ -n "$_project_root" ]]; then
   _safe_load_env "$_project_root/.env"
 fi
+_safe_load_env ~/.env
 # Fallback: accept JIRA_AUTH_TOKEN for backward compatibility
 : "${JIRA_API_TOKEN:=${JIRA_AUTH_TOKEN:-}}"
 
