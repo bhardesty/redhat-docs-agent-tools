@@ -130,8 +130,8 @@ def main():
                 sys.exit(1)
 
     try:
-        from claude_context.skills.evidence_retrieval import retrieve_evidence
         from claude_context.skills._index_manager import ensure_index
+        from claude_context.skills.evidence_retrieval import retrieve_evidence
     except ImportError:
         print(
             "Error: code-finder is not installed. Run this script via:\n"
